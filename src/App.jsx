@@ -628,7 +628,10 @@ export default function App() {
     if (currentUser) {
       setLoading(true);
       Promise.all([apiGet("getCows"), apiGet("getLogs")])
-        .then(([c, l]) => { setCows(c); setLogs(l); })
+        .then(([c, l]) => {
+          setCows(Array.isArray(c) ? c : []);
+          setLogs(Array.isArray(l) ? l : []);
+        })
         .catch(() => {})
         .finally(() => setLoading(false));
     }
