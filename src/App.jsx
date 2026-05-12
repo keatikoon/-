@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 // ====================================================
 // ⚠️ ใส่ URL ของ Google Apps Script ที่นี่
 // ====================================================
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz4lbSQ7Fj1ba8IrnsjqXZ9Z6k0VA3drJXGOhI4n9Bur2i5zc2QOphaj5cpu6jJZQB9/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbydWZoORZylqixPU_8JRvFkNPnlXo41v288QxXDlnssbqcZKyzqt04vX_6KFjUz_PZFFQ/exec";
 
 const MILK_PRICE = 20;
 const ACCOUNTS = {
