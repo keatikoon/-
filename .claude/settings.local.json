@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(git commit -m 'Initial commit: farm-app project *)",
+      "Bash(Get-ChildItem -Recurse \"C:\\\\Users\\\\UsEr\\\\Downloads\\\\farm-app-final \\(1\\)\\\\farm-app\\\\.claude\\\\\" | Select-Object FullName)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(git commit -m 'Fix: replace missing favicon/icon with inline SVG, add mobile-web-app-capable meta *)",
+      "Bash(git commit -m 'Fix: guard cows/logs state against non-array API response *)",
+      "Bash(git commit -m 'Fix: remove PWA plugin \\(missing icon files cause build failure\\) *)",
+      "Bash(git commit -m 'Fix: remove vite-plugin-pwa and workbox from dependencies *)",
+      "Bash(git commit -m 'Update Google Apps Script URL to production endpoint *)"
+    ]
+  }
+}
