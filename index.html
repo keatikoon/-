@@ -767,6 +767,102 @@ function renderLogin(){
 }
 
 // ============== LANDING PAGE ==============
+// ============== Staff Login ผ่าน URL ?farm=UID ==============
+let staffFarmId = null; // เก็บ Farm ID ที่ staff เข้ามา
+
+async function startStaffLogin(farmId){
+  staffFarmId = farmId;
+  // แสดง loading ก่อน
+  renderLoading();
+  try{
+    // Set farm ID + load farm doc จาก Firestore (allow read: if true ใน rules)
+    window.cloud.setFarmId(farmId);
+    await loadFromCloud();
+    // ถ้ามี session ของ staff อยู่แล้ว + farm ID ตรงกัน → restore + enter app
+    const savedSession = loadSession();
+    const savedFarm = (()=>{try{return localStorage.getItem('dairy-staff-farm');}catch(e){return null;}})();
+    if(savedSession && savedSession.role==='staff' && savedFarm===farmId){
+      // verify ว่า user ยังมีอยู่ + active
+      const emp = (DB.employees||[]).find(e=>e.id===savedSession.empId);
+      if(emp && emp.active !== false){
+        currentUser = savedSession;
+        try{ subscribeCloud(); }catch(e){}
+        renderShell();
+        let sp = null;
+        try{ sp = localStorage.getItem('dairy-current-page'); }catch(e){}
+        const allowed = Array.from(document.querySelectorAll('.menu-item')).map(m=>m.dataset.page);
+        let def = 'milkQuick';
+        if(!allowed.includes(def)) def = allowed[0] || 'milkQuick';
+        showPage((sp && allowed.includes(sp)) ? sp : def);
+        return;
+      }
+    }
+    // ไม่มี session → render staff login page
+    renderStaffLoginPage();
+  } catch(e){
+    console.error('startStaffLogin:', e);
+    renderStaffLoginPage('ไม่สามารถโหลดข้อมูลฟาร์มได้ — กรุณาตรวจ URL หรือติดต่อเจ้าของฟาร์ม');
+  }
+}
+
+function renderStaffLoginPage(errMsg){
+  const app = $('app');
+  app.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-box">
+        <div class="login-logo">👷</div>
+        <div class="login-title">${DB.settings?.farmName||'ฟาร์มวัวนม'}</div>
+        <div class="login-sub">เข้าใช้งานในฐานะพนักงาน</div>
+        <div class="login-err ${errMsg?'show':''}" id="staffLoginErr">${errMsg||''}</div>
+        <input type="text" id="sf_user" placeholder="Username" autocapitalize="off" autocomplete="username" style="width:100%;padding:14px;font-size:16px;border:2px solid #e5e7eb;border-radius:12px;margin-bottom:10px;text-transform:lowercase" onkeydown="if(event.key==='Enter')document.getElementById('sf_pass').focus()">
+        <input type="password" id="sf_pass" placeholder="Password" autocomplete="current-password" style="width:100%;padding:14px;font-size:16px;border:2px solid #e5e7eb;border-radius:12px;margin-bottom:14px" onkeydown="if(event.key==='Enter')doStaffLogin()">
+        <button class="btn-login" onclick="doStaffLogin()">เข้าสู่ระบบ</button>
+        <div class="login-hint" style="margin-top:14px">
+          ลืมรหัส? ติดต่อเจ้าของฟาร์ม<br>
+          <a href="/" style="color:#16a34a">← กลับหน้าหลัก</a>
+        </div>
+      </div>
+    </div>`;
+  $('sf_user').focus();
+}
+
+function doStaffLogin(){
+  const username = ($('sf_user').value||'').trim().toLowerCase();
+  const password = ($('sf_pass').value||'').trim();
+  const err = $('staffLoginErr');
+  if(!username || !password){
+    err.textContent = 'กรุณากรอก Username และ Password';
+    err.classList.add('show');
+    return;
+  }
+  const emp = (DB.employees||[]).find(e=>(e.username||'').toLowerCase()===username && e.password===password);
+  if(!emp){
+    err.textContent = 'Username หรือ Password ไม่ถูกต้อง';
+    err.classList.add('show');
+    return;
+  }
+  if(emp.active === false){
+    err.textContent = 'บัญชีนี้ถูกระงับการใช้งาน — ติดต่อเจ้าของฟาร์ม';
+    err.classList.add('show');
+    return;
+  }
+  // Subscribe Firestore เพื่อ realtime
+  try{ subscribeCloud(); }catch(e){}
+  currentUser = {role:'staff', name:emp.name, empId:emp.id, username:emp.username, permissions: emp.permissions||[]};
+  saveSession();
+  // เก็บ farmId ของ staff session เพื่อ restore หลัง refresh
+  try{ localStorage.setItem('dairy-staff-farm', staffFarmId); }catch(e){}
+  log('login','พนักงาน '+emp.name+' เข้าสู่ระบบ (URL)');
+  // Enter app — ข้าม PIN page ของ Internal login เพราะ staff ไม่ใช่ owner
+  renderShell();
+  let savedPage = null;
+  try{ savedPage = localStorage.getItem('dairy-current-page'); }catch(e){}
+  const allowedPages = Array.from(document.querySelectorAll('.menu-item')).map(m=>m.dataset.page);
+  let defaultPage = 'milkQuick';
+  if(!allowedPages.includes(defaultPage)) defaultPage = allowedPages[0] || 'milkQuick';
+  showPage((savedPage && allowedPages.includes(savedPage)) ? savedPage : defaultPage);
+}
+
 function renderLoading(){
   // แสดงเฉพาะตอน app boot/refresh — กัน flash หน้า Landing ก่อน Firebase Auth restore
   const app = $('app');
@@ -3061,7 +3157,8 @@ function delInc(id){
 
 // ================== EMPLOYEES ==================
 function renderEmp(){
-  const farmId = (window.cloud && window.cloud.farmId) || authUser?.uid || '';
+  // Farm ID = uid ของ owner (Firebase Auth) — ใช้สำหรับลิงก์ให้พนักงาน login
+  const farmId = authUser?.uid || '';
   $('pageContent').innerHTML = `
     <div class="page-head">
       <div class="page-title">👷 พนักงาน (${DB.employees.length})</div>
@@ -4647,6 +4744,17 @@ function startApp(){
   // ensure structure
   if(!DB.settings) DB.settings = {ownerPin:'1234',milkPrice:22,farmName:'ฟาร์มวัวนม'};
   if(!DB.settings.ownerPin) DB.settings.ownerPin = '1234';
+
+  // เช็ค URL `?farm=UID` → โหมด staff login (สำหรับพนักงานที่ owner share ลิงก์)
+  const params = new URLSearchParams(location.search);
+  const staffFarmParam = params.get('farm');
+  // ใช้โหมด staff direct ถ้า: มี ?farm + ไม่ได้ login Firebase Auth + window.cloud พร้อม
+  const hasFirebaseSession = Object.keys(localStorage).some(k => k.startsWith('firebase:authUser'));
+  if(staffFarmParam && window.cloud && !hasFirebaseSession){
+    startStaffLogin(staffFarmParam);
+    return;
+  }
+
   // ถ้าใช้ Firebase Auth → ให้ AuthListener จัดการ
   if(window.cloud && window.cloud.auth){
     startAuthListener();
