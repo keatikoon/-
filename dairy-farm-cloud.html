@@ -742,10 +742,17 @@ function renderInternalLogin(){
             </div>
           </div>
           <div class="login-err" id="loginErr"></div>
+          <!-- PIN input — สำหรับ Owner หรือ Staff ที่ใช้ PIN -->
           <input type="password" inputmode="numeric" id="pinInput" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+          <!-- Username/Password — สำหรับ Staff ที่ owner สร้างให้ -->
+          <div id="userPassFields" style="display:none">
+            <input type="text" id="usernameInput" placeholder="Username" autocapitalize="off" autocomplete="username" style="width:100%;padding:14px;font-size:16px;border:2px solid #e5e7eb;border-radius:12px;margin-bottom:8px;text-transform:lowercase" onkeydown="if(event.key==='Enter')document.getElementById('passwordInput').focus()">
+            <input type="password" id="passwordInput" placeholder="Password" autocomplete="current-password" style="width:100%;padding:14px;font-size:16px;border:2px solid #e5e7eb;border-radius:12px;margin-bottom:12px" onkeydown="if(event.key==='Enter')doLogin()">
+            <div style="text-align:center;font-size:11px;color:#9ca3af;margin-bottom:8px">หรือใช้ PIN ที่เจ้าของฟาร์มให้</div>
+          </div>
           <button class="btn-login" id="btnLogin" onclick="doLogin()" disabled>เข้าสู่ระบบ</button>
           <div class="login-hint">
-            เจ้าของ PIN เริ่มต้น: 1234 · พนักงาน: 1111/2222<br>
+            เจ้าของ PIN เริ่มต้น: 1234<br>
             <a href="#" onclick="event.preventDefault();showPricingPage()" style="color:#16a34a">ดู Plans / ต่ออายุ</a>
             ${isAdmin ? ' · <a href="#" onclick="event.preventDefault();showAdminPage()" style="color:#dc2626">👑 Admin</a>' : ''}
           </div>
@@ -1244,15 +1251,30 @@ function selectRole(role){
   document.querySelectorAll('.role-card').forEach(c=>c.classList.remove('active'));
   document.querySelector(`[data-role="${role}"]`)?.classList.add('active');
   $('btnLogin').disabled = false;
-  $('pinInput').focus();
+  // Staff → แสดงทั้ง username/password และ PIN ; Owner → แค่ PIN
+  const userPassFields = $('userPassFields');
+  if(role === 'staff'){
+    if(userPassFields) userPassFields.style.display = 'block';
+    const pinInput = $('pinInput');
+    if(pinInput) pinInput.placeholder = 'หรือใช้ PIN';
+    $('usernameInput')?.focus();
+  } else {
+    if(userPassFields) userPassFields.style.display = 'none';
+    const pinInput = $('pinInput');
+    if(pinInput) pinInput.placeholder = '••••';
+    pinInput?.focus();
+  }
 }
 
 function doLogin(){
-  const pin = $('pinInput').value.trim();
+  const pin = ($('pinInput').value||'').trim();
+  const username = ($('usernameInput')?.value||'').trim().toLowerCase();
+  const password = ($('passwordInput')?.value||'').trim();
   const err = $('loginErr');
   if(!selectedRole){ err.textContent='กรุณาเลือกประเภทผู้ใช้'; err.classList.add('show'); return; }
-  if(!pin){ err.textContent='กรุณากรอก PIN'; err.classList.add('show'); return; }
+
   if(selectedRole==='owner'){
+    if(!pin){ err.textContent='กรุณากรอก PIN เจ้าของฟาร์ม'; err.classList.add('show'); return; }
     if(pin === (DB.settings.ownerPin||'1234')){
       currentUser = {role:'owner', name:'เจ้าของฟาร์ม'};
       saveSession();
@@ -1261,21 +1283,43 @@ function doLogin(){
     } else {
       err.textContent='PIN ไม่ถูกต้อง'; err.classList.add('show');
     }
-  } else {
-    const emp = DB.employees.find(e=>e.pin===pin);
+    return;
+  }
+
+  // STAFF — ลอง Username/Password ก่อน → ถ้าไม่ใส่ใช้ PIN
+  if(username && password){
+    const emp = DB.employees.find(e=>(e.username||'').toLowerCase()===username && e.password===password);
     if(emp){
-      currentUser = {role:'staff', name:emp.name, empId:emp.id};
+      if(emp.active === false){
+        err.textContent='บัญชีนี้ถูกระงับการใช้งาน — ติดต่อเจ้าของฟาร์ม'; err.classList.add('show'); return;
+      }
+      currentUser = {role:'staff', name:emp.name, empId:emp.id, username:emp.username, permissions: emp.permissions||[]};
       saveSession();
-      log('login','พนักงาน '+emp.name+' เข้าสู่ระบบ');
+      log('login','พนักงาน '+emp.name+' เข้าสู่ระบบ (user)');
       enterApp();
-    } else if(pin==='0000'){
-      currentUser = {role:'staff', name:'พนักงานทั่วไป'};
-      saveSession();
-      log('login','พนักงานทั่วไปเข้าสู่ระบบ');
-      enterApp();
-    } else {
-      err.textContent='PIN ไม่ถูกต้อง'; err.classList.add('show');
+      return;
     }
+    err.textContent='Username หรือ Password ไม่ถูกต้อง'; err.classList.add('show'); return;
+  }
+
+  // STAFF — Fallback ใช้ PIN
+  if(!pin){ err.textContent='กรุณากรอก Username/Password หรือ PIN'; err.classList.add('show'); return; }
+  const empByPin = DB.employees.find(e=>e.pin===pin && e.pin);
+  if(empByPin){
+    if(empByPin.active === false){
+      err.textContent='บัญชีนี้ถูกระงับการใช้งาน — ติดต่อเจ้าของฟาร์ม'; err.classList.add('show'); return;
+    }
+    currentUser = {role:'staff', name:empByPin.name, empId:empByPin.id, permissions: empByPin.permissions||[]};
+    saveSession();
+    log('login','พนักงาน '+empByPin.name+' เข้าสู่ระบบ (pin)');
+    enterApp();
+  } else if(pin==='0000'){
+    currentUser = {role:'staff', name:'พนักงานทั่วไป', permissions: null};
+    saveSession();
+    log('login','พนักงานทั่วไปเข้าสู่ระบบ');
+    enterApp();
+  } else {
+    err.textContent='PIN ไม่ถูกต้อง'; err.classList.add('show');
   }
 }
 
@@ -1373,8 +1417,9 @@ async function enterApp(){
   // Restore page ที่ user เปิดอยู่ก่อน refresh (ถ้ามี + role อนุญาต)
   let savedPage = null;
   try{ savedPage = localStorage.getItem('dairy-current-page'); }catch(e){}
-  const defaultPage = currentUser.role==='owner'?'dashboard':'milkQuick';
   const allowedPages = Array.from(document.querySelectorAll('.menu-item')).map(m=>m.dataset.page);
+  let defaultPage = currentUser.role==='owner' ? 'dashboard' : 'milkQuick';
+  if(!allowedPages.includes(defaultPage)) defaultPage = allowedPages[0] || 'dashboard';
   showPage((savedPage && allowedPages.includes(savedPage)) ? savedPage : defaultPage);
 }
 
@@ -1409,22 +1454,35 @@ function renderShell(){
     {p:'logs',i:'📜',t:'บันทึกกิจกรรม'},
     {p:'settings',i:'⚙️',t:'ตั้งค่า'}
   ];
-  const staffMenu = [
+  const staffMenuFull = [
     {sec:'งานประจำวัน'},
     {p:'milkQuick',i:'🥛',t:'บันทึกรีดนม'},
+    {p:'milk',i:'🥛',t:'บันทึกน้ำนม (ละเอียด)'},
+    {p:'cows',i:'🐄',t:'รายชื่อวัว'},
     {p:'feed',i:'🌾',t:'บันทึกอาหาร'},
     {p:'health',i:'💉',t:'บันทึกสุขภาพ'},
     {p:'breed',i:'❤️',t:'บันทึกผสมพันธุ์'},
     {p:'weights',i:'⚖️',t:'ชั่งน้ำหนัก/BCS'},
     {p:'heats',i:'🔥',t:'การเป็นสัด'},
     {p:'env',i:'🌡️',t:'สิ่งแวดล้อม'},
-    {p:'cows',i:'🐄',t:'รายชื่อวัว'},
+    {p:'grass',i:'🌿',t:'แปลงหญ้า'},
+    {p:'inventory',i:'📦',t:'สต็อกวัตถุดิบ'},
     {sec:'งาน'},
     {p:'myTasks',i:'✅',t:'งานของฉัน'},
     {p:'timeclock',i:'⏰',t:'ลงเวลาเข้า-ออก'},
     {p:'alerts',i:'🔔',t:'การแจ้งเตือน'}
   ];
-  const menu = isOwner ? ownerMenu : staffMenu;
+  // Filter staff menu ตาม permissions ที่ owner ติ๊กให้
+  const perms = currentUser?.permissions; // null = ทั้งหมด, [] = ไม่มีสิทธิ์, [list] = filter
+  const staffMenu = (Array.isArray(perms) && perms.length>=0 && perms !== null)
+    ? staffMenuFull.filter(m => m.sec || perms.includes(m.p))
+    : staffMenuFull;
+  // ลบ section header ที่ไม่มี item ตามหลัง
+  const cleanedStaffMenu = staffMenu.filter((m,i,arr) => {
+    if(!m.sec) return true;
+    return arr[i+1] && !arr[i+1].sec;
+  });
+  const menu = isOwner ? ownerMenu : cleanedStaffMenu;
 
   $('app').innerHTML = `
     <div class="app-shell">
@@ -3003,29 +3061,70 @@ function delInc(id){
 
 // ================== EMPLOYEES ==================
 function renderEmp(){
+  const farmId = (window.cloud && window.cloud.farmId) || authUser?.uid || '';
   $('pageContent').innerHTML = `
     <div class="page-head">
       <div class="page-title">👷 พนักงาน (${DB.employees.length})</div>
       <div class="page-actions"><button class="btn btn-primary" onclick="openEmp()">➕ เพิ่ม</button></div>
     </div>
+    ${farmId ? `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div style="font-size:13px">
+          <b>🔗 ลิงก์ให้พนักงาน Login:</b>
+          <code style="background:var(--hover);padding:3px 6px;border-radius:4px;font-size:11px;word-break:break-all">https://farmmeth.com/?farm=${farmId}</code>
+        </div>
+        <button class="btn btn-sec btn-sm" onclick="navigator.clipboard.writeText('https://farmmeth.com/?farm=${farmId}').then(()=>alert('คัดลอกลิงก์แล้ว ✅'))">📋 คัดลอกลิงก์</button>
+      </div>
+      <p class="muted" style="font-size:11px;margin-top:6px">ส่งลิงก์นี้ให้พนักงาน → กดเข้าใช้ → ใส่ Username/Password ที่ตั้งให้</p>
+    </div>` : ''}
     <div class="table-wrap"><table>
-      <tr><th>ชื่อ</th><th>เลขบัตร</th><th>ตำแหน่ง</th><th>ประเภทค่าจ้าง</th><th>อัตรา</th><th>PIN</th><th></th></tr>
-      ${DB.employees.map(e=>`<tr>
-        <td>${e.name}</td><td>${e.idCard||'-'}</td><td>${e.position||'-'}</td>
-        <td>${{monthly:'รายเดือน',daily:'รายวัน',hourly:'รายชั่วโมง'}[e.wageType]||'-'}</td>
-        <td>${money(e.wage||0)}</td>
-        <td><code>${e.pin||''}</code></td>
+      <tr><th>ชื่อ</th><th>ตำแหน่ง</th><th>Username</th><th>สิทธิ์</th><th>อัตรา</th><th>สถานะ</th><th></th></tr>
+      ${DB.employees.map(e=>{
+        const permCount = (e.permissions||[]).length;
+        const totalPerms = STAFF_PERM_LIST.length;
+        return `<tr>
+        <td>${e.name}${e.idCard?'<br><small class="muted">'+e.idCard+'</small>':''}</td>
+        <td>${e.position||'-'}</td>
+        <td>${e.username?`<code>${e.username}</code>`:'<span class="muted">— PIN: '+(e.pin||'-')+'</span>'}</td>
+        <td>${e.username?`<span class="badge ${permCount===totalPerms?'green':'gray'}">${permCount}/${totalPerms}</span>`:'-'}</td>
+        <td>${money(e.wage||0)}<br><small class="muted">${({monthly:'/เดือน',daily:'/วัน',hourly:'/ชม.'})[e.wageType]||''}</small></td>
+        <td>${e.active===false?'<span class="badge red">ระงับ</span>':'<span class="badge green">ใช้งาน</span>'}</td>
         <td><button class="btn btn-sec btn-sm" onclick="openEmp('${e.id}')">✏️</button></td>
-      </tr>`).join('')||'<tr><td colspan="7" class="empty">ไม่มีพนักงาน</td></tr>'}
+      </tr>`;}).join('')||'<tr><td colspan="7" class="empty">ไม่มีพนักงาน — กดเพิ่มเพื่อสร้างพนักงานคนแรก</td></tr>'}
     </table></div>`;
 }
 
+// รายการสิทธิ์ที่เจ้าของฟาร์มเลือกให้พนักงานเข้าได้ — key ต้องตรงกับ page name ใน menu/refresh
+const STAFF_PERM_LIST = [
+  {key:'milkQuick', label:'⚡ บันทึกรีดนม (Quick)', def:true},
+  {key:'milk',      label:'🥛 บันทึกน้ำนม (ละเอียด)', def:true},
+  {key:'cows',      label:'🐄 รายชื่อวัว', def:true},
+  {key:'feed',      label:'🌾 บันทึกอาหาร', def:true},
+  {key:'health',    label:'💉 บันทึกสุขภาพ/วัคซีน', def:true},
+  {key:'breed',     label:'❤️ บันทึกผสมพันธุ์', def:false},
+  {key:'weights',   label:'⚖️ ชั่งน้ำหนัก/BCS', def:false},
+  {key:'heats',     label:'🔥 การเป็นสัด', def:false},
+  {key:'env',       label:'🌡️ สิ่งแวดล้อมคอก', def:false},
+  {key:'grass',     label:'🌿 แปลงหญ้า', def:false},
+  {key:'inventory', label:'📦 ดูสต็อกวัตถุดิบ', def:false},
+  {key:'myTasks',   label:'✅ งานของฉัน', def:true},
+  {key:'timeclock', label:'⏰ ลงเวลาเข้า-ออก', def:true},
+  {key:'alerts',    label:'🔔 การแจ้งเตือน', def:true},
+];
+
 function openEmp(id){
-  const e = id ? DB.employees.find(x=>x.id===id) : {name:'',idCard:'',position:'',wageType:'monthly',wage:'',pin:''};
+  const e = id ? DB.employees.find(x=>x.id===id) : {name:'',idCard:'',position:'',wageType:'monthly',wage:'',pin:'',username:'',password:'',active:true,permissions:null};
+  const perms = e.permissions || STAFF_PERM_LIST.filter(p=>p.def).map(p=>p.key);
+  const permCheckboxes = STAFF_PERM_LIST.map(p=>`
+    <label style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--hover);border-radius:6px;cursor:pointer;font-size:13px">
+      <input type="checkbox" class="perm-cb" value="${p.key}" ${perms.includes(p.key)?'checked':''}>
+      <span>${p.label}</span>
+    </label>`).join('');
+
   openModal(`
     <h3>${id?'แก้ไข':'เพิ่ม'}พนักงาน</h3>
     <div class="form-grid">
-      <div class="field"><label>ชื่อ-นามสกุล</label><input id="f_name" value="${e.name||''}"></div>
+      <div class="field"><label>ชื่อ-นามสกุล *</label><input id="f_name" value="${e.name||''}"></div>
       <div class="field"><label>เลขบัตรประชาชน</label><input id="f_idc" value="${e.idCard||''}"></div>
       <div class="field"><label>ตำแหน่ง</label><input id="f_pos" value="${e.position||''}"></div>
       <div class="field"><label>ประเภทค่าจ้าง</label><select id="f_wtype">
@@ -3034,8 +3133,31 @@ function openEmp(id){
         <option value="hourly" ${e.wageType==='hourly'?'selected':''}>รายชั่วโมง</option>
       </select></div>
       <div class="field"><label>อัตรา (บาท)</label><input type="number" step="0.01" id="f_wage" value="${e.wage||''}"></div>
-      <div class="field"><label>PIN เข้าระบบ</label><input id="f_pin" value="${e.pin||''}" maxlength="6"></div>
+      <div class="field"><label>สถานะ</label><select id="f_active">
+        <option value="1" ${e.active!==false?'selected':''}>✅ ใช้งานได้</option>
+        <option value="0" ${e.active===false?'selected':''}>❌ ระงับการใช้งาน</option>
+      </select></div>
     </div>
+
+    <h4 style="margin-top:16px;font-size:14px;color:var(--text)">🔐 บัญชีเข้าใช้ระบบ</h4>
+    <p class="muted" style="font-size:12px;margin-bottom:8px">พนักงานใช้ Username + Password นี้ login เข้าใช้งานแอพ (แทน PIN)</p>
+    <div class="form-grid">
+      <div class="field"><label>Username (ชื่อผู้ใช้ a-z, 0-9)</label><input id="f_username" value="${e.username||''}" placeholder="somchai01" autocomplete="off" style="text-transform:lowercase"></div>
+      <div class="field"><label>Password</label><input id="f_password" type="text" value="${e.password||''}" placeholder="อย่างน้อย 4 ตัว" autocomplete="new-password"></div>
+      <div class="field"><label>PIN สำรอง (4-6 หลัก)</label><input id="f_pin" value="${e.pin||''}" maxlength="6" placeholder="ทางเลือก"></div>
+    </div>
+
+    <h4 style="margin-top:16px;font-size:14px;color:var(--text)">🎯 สิทธิ์การเข้าถึง</h4>
+    <p class="muted" style="font-size:12px;margin-bottom:8px">ติ๊กเลือกหน้าที่อนุญาตให้พนักงานเข้าได้ — ยกเลิกติ๊ก = ซ่อนจากเมนู</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px">
+      ${permCheckboxes}
+    </div>
+    <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn btn-sec btn-sm" onclick="document.querySelectorAll('.perm-cb').forEach(c=>c.checked=true)">✅ ทั้งหมด</button>
+      <button type="button" class="btn btn-sec btn-sm" onclick="document.querySelectorAll('.perm-cb').forEach(c=>c.checked=false)">❌ ล้างทั้งหมด</button>
+      <button type="button" class="btn btn-sec btn-sm" onclick="document.querySelectorAll('.perm-cb').forEach(c=>{c.checked=${JSON.stringify(STAFF_PERM_LIST.filter(p=>p.def).map(p=>p.key))}.includes(c.value)})">↻ ค่าเริ่มต้น</button>
+    </div>
+
     <div class="modal-foot">
       ${id?'<button class="btn btn-danger" onclick="delEmp(\''+id+'\')">🗑️ ลบ</button>':''}
       <button class="btn btn-sec" onclick="closeModal()">ยกเลิก</button>
@@ -3045,11 +3167,30 @@ function openEmp(id){
 
 function saveEmp(id){
   if(!id && !checkPlanLimit('employee')) return;
+  const username = ($('f_username').value||'').trim().toLowerCase().replace(/[^a-z0-9_.-]/g,'');
+  const password = ($('f_password').value||'').trim();
+  const permissions = Array.from(document.querySelectorAll('.perm-cb:checked')).map(c=>c.value);
   const data = {
-    name:$('f_name').value, idCard:$('f_idc').value, position:$('f_pos').value,
-    wageType:$('f_wtype').value, wage:+$('f_wage').value||0, pin:$('f_pin').value
+    name:$('f_name').value.trim(),
+    idCard:$('f_idc').value.trim(),
+    position:$('f_pos').value.trim(),
+    wageType:$('f_wtype').value,
+    wage:+$('f_wage').value||0,
+    pin:$('f_pin').value.trim(),
+    username: username,
+    password: password,
+    active: $('f_active').value === '1',
+    permissions: permissions
   };
-  if(!data.name){ alert('กรุณากรอกชื่อ'); return; }
+  if(!data.name){ alert('กรุณากรอกชื่อพนักงาน'); return; }
+  // ตรวจ username/password
+  if(data.username){
+    if(data.username.length < 3){ alert('Username ต้องอย่างน้อย 3 ตัวอักษร'); return; }
+    if(!data.password || data.password.length < 4){ alert('Password ต้องอย่างน้อย 4 ตัวอักษร'); return; }
+    // ตรวจ username ซ้ำ
+    const dup = DB.employees.find(e=>e.username===data.username && e.id!==id);
+    if(dup){ alert('Username นี้ใช้แล้วโดย ' + dup.name); return; }
+  }
   if(id){
     Object.assign(DB.employees.find(x=>x.id===id), data);
     log('edit-emp', data.name);
