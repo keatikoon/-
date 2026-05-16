@@ -1253,7 +1253,10 @@ function loadSession(){
   return null;
 }
 function clearSession(){
-  try{ localStorage.removeItem('dairy-session'); }catch(e){}
+  try{
+    localStorage.removeItem('dairy-session');
+    localStorage.removeItem('dairy-current-page');
+  }catch(e){}
 }
 
 function logout(){
@@ -1330,7 +1333,12 @@ async function enterApp(){
     setStatus('offline','โหมดออฟไลน์ (ไม่มี Cloud)');
   }
   renderShell();
-  showPage(currentUser.role==='owner'?'dashboard':'milkQuick');
+  // Restore page ที่ user เปิดอยู่ก่อน refresh (ถ้ามี + role อนุญาต)
+  let savedPage = null;
+  try{ savedPage = localStorage.getItem('dairy-current-page'); }catch(e){}
+  const defaultPage = currentUser.role==='owner'?'dashboard':'milkQuick';
+  const allowedPages = Array.from(document.querySelectorAll('.menu-item')).map(m=>m.dataset.page);
+  showPage((savedPage && allowedPages.includes(savedPage)) ? savedPage : defaultPage);
 }
 
 function renderShell(){
@@ -1406,6 +1414,7 @@ function showPage(page){
   document.querySelectorAll('.menu-item').forEach(m=>m.classList.toggle('active', m.dataset.page===page));
   document.getElementById('sidebar')?.classList.remove('open');
   currentPage = page;
+  try{ localStorage.setItem('dairy-current-page', page); }catch(e){}
   refresh();
 }
 
