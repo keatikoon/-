@@ -2178,20 +2178,29 @@ function checkEveningCompletion(){
     DB.milk.find(m => m.cowId===c.id && m.date===d && m.session==='evening' && +m.amount>0)
   );
   if(!allDone) return;
-  // ป้องกันส่งซ้ำ
-  if(DB.settings.telegramLastSent === d) return;
-  if(!DB.settings.telegramBotToken || !DB.settings.telegramChatId) return;
-  // ส่ง
   const msg = buildDailySummary(d);
-  sendTelegram(msg).then(r=>{
-    if(r && r.ok){
-      DB.settings.telegramLastSent = d;
-      log('telegram-sent','ส่งสรุปวันนี้ไป Telegram');
-      save();
-    } else {
-      console.error('Telegram failed:', r);
-    }
-  });
+
+  // ส่ง Telegram (ถ้าตั้งค่าและยังไม่ได้ส่งวันนี้)
+  if(DB.settings.telegramBotToken && DB.settings.telegramChatId && DB.settings.telegramLastSent !== d){
+    sendTelegram(msg).then(r=>{
+      if(r && r.ok){
+        DB.settings.telegramLastSent = d;
+        log('telegram-sent','ส่งสรุปวันนี้ไป Telegram');
+        save();
+      } else { console.error('Telegram failed:', r); }
+    });
+  }
+
+  // ส่ง LINE (ถ้าตั้งค่าและยังไม่ได้ส่งวันนี้)
+  if(DB.settings.lineChannelToken && DB.settings.lineUserId && DB.settings.lineLastSent !== d){
+    sendLine(msg).then(r=>{
+      if(r && r.ok){
+        DB.settings.lineLastSent = d;
+        log('line-sent','ส่งสรุปวันนี้ไป LINE');
+        save();
+      } else { console.error('LINE failed:', r); }
+    });
+  }
 }
 
 function buildDailySummary(d){
@@ -2263,6 +2272,69 @@ async function sendTelegramTest(){
   const r = await sendTelegram(msg);
   if(r && r.ok) alert('✅ ส่งทดสอบสำเร็จ ดูใน Telegram ของคุณ');
   else alert('❌ ส่งไม่สำเร็จ: '+(r?.description||r?.error||'ตรวจ Token/Chat ID'));
+}
+
+// ============== LINE Messaging API ==============
+// LINE ไม่รองรับ HTML — ต้องแปลง <b>...</b> เป็น plain text ก่อนส่ง
+function stripHtml(s){
+  return (s||'').replace(/<b>|<\/b>|<i>|<\/i>|<u>|<\/u>|<code>|<\/code>/g,'')
+                .replace(/<br\s*\/?>/g,'\n')
+                .replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+}
+
+// LINE API block CORS — ต้องเรียกผ่าน Cloudflare Worker proxy
+const LINE_PROXY_URL = 'https://farmmeth-line-proxy.keatikoon.workers.dev/';
+
+async function sendLine(text){
+  const token = DB.settings.lineChannelToken;
+  const userId = DB.settings.lineUserId;
+  if(!token || !userId){
+    return {ok:false, error:'ยังไม่ได้ตั้งค่า LINE'};
+  }
+  const plainText = stripHtml(text).substring(0, 4900); // LINE max 5000 chars
+  try{
+    const r = await fetch(LINE_PROXY_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        token: token,
+        to: userId,
+        text: plainText
+      })
+    });
+    if(r.status === 200) return {ok:true};
+    const j = await r.json().catch(()=>({}));
+    return {ok:false, status:r.status, error: j.message || j.error || ('HTTP '+r.status), details: j.details};
+  }catch(e){
+    return {ok:false, error: e.message};
+  }
+}
+
+async function sendLineTest(){
+  const msg = '✅ ทดสอบการเชื่อมต่อ LINE\n\nหากเห็นข้อความนี้ แสดงว่าตั้งค่า LINE ถูกต้องแล้ว 🎉\n\nระบบจะส่งสรุปยอดอัตโนมัติทุกวันหลังบันทึกนมเย็นเสร็จ';
+  const r = await sendLine(msg);
+  if(r && r.ok) alert('✅ ส่งทดสอบ LINE สำเร็จ ดูใน LINE ของคุณ');
+  else alert('❌ ส่ง LINE ไม่สำเร็จ: '+(r?.error||'ตรวจ Token/User ID')+(r?.details?'\n\n'+JSON.stringify(r.details):''));
+}
+
+async function sendLineNow(){
+  if(!DB.settings.lineChannelToken || !DB.settings.lineUserId){
+    alert('⚠️ กรุณาตั้งค่า LINE Channel Token + User ID ในหน้าตั้งค่าก่อน');
+    return;
+  }
+  const btn = event?.target;
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ กำลังส่ง...'; }
+  const msg = buildDailySummary();
+  const r = await sendLine(msg);
+  if(r && r.ok){
+    DB.settings.lineLastSent = today();
+    log('line-manual','ส่งสรุปวันนี้ไป LINE (กดเอง)');
+    save();
+    alert('✅ ส่ง LINE สำเร็จ');
+  } else {
+    alert('❌ ส่งไม่สำเร็จ: '+(r?.error||'ไม่ทราบสาเหตุ')+'\n\nตรวจ Channel Token และ User ID ใหม่');
+  }
+  if(btn){ btn.disabled = false; btn.textContent = '📤 ส่งสรุปวันนี้ไป LINE'; }
 }
 
 function delMilk(id){
@@ -3509,6 +3581,49 @@ function renderSet(){
       ${DB.settings.telegramLastSent ? `<p class="muted" style="margin-top:10px">ส่งล่าสุด: ${DB.settings.telegramLastSent}</p>` : ''}
     </div>
     <div class="card">
+      <div class="card-title">💬 แจ้งเตือน LINE (Messaging API)</div>
+      <p class="muted" style="margin-bottom:10px">ส่งสรุปยอดประจำวันไปแชท LINE <b>อัตโนมัติ</b> หลังพนักงานบันทึกนมเย็นครบทุกตัว</p>
+      <div class="form-grid">
+        <div class="field"><label>Channel Access Token</label><input type="text" id="s_lineToken" value="${DB.settings.lineChannelToken||''}" placeholder="long-lived token..."></div>
+        <div class="field"><label>User ID หรือ Group ID</label><input type="text" id="s_lineUser" value="${DB.settings.lineUserId||''}" placeholder="U1234... หรือ C1234..."></div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveLine()">💾 บันทึก</button>
+        <button class="btn btn-sec" onclick="sendLineTest()">🧪 ทดสอบส่ง</button>
+        <button class="btn btn-sec" onclick="sendLineNow()">📤 ส่งสรุปวันนี้</button>
+      </div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:#06c755;font-size:13px">📖 วิธีตั้งค่า LINE (กดดู)</summary>
+        <div style="font-size:13px;color:#4b5563;margin-top:8px;line-height:1.8">
+          <b>1. สร้าง LINE Channel:</b><br>
+          • ไป <a href="https://developers.line.biz/console/" target="_blank" style="color:#06c755">developers.line.biz/console</a> → Login ด้วยบัญชี LINE<br>
+          • สร้าง <b>Provider</b> ใหม่ → ตั้งชื่อ เช่น <i>FarmMeth</i><br>
+          • ในนั้น สร้าง <b>Channel</b> แบบ <b>Messaging API</b> → กรอกข้อมูล → Create<br>
+          <br>
+          <b>2. หา Channel Access Token:</b><br>
+          • เปิด Channel → Tab <b>"Messaging API"</b><br>
+          • เลื่อนลงสุด หา <b>"Channel access token (long-lived)"</b> → กด <b>Issue</b><br>
+          • Copy token มาวางช่องด้านบน<br>
+          <br>
+          <b>3. เพิ่ม Bot เป็นเพื่อน:</b><br>
+          • ใน Tab "Messaging API" จะมี <b>QR code</b><br>
+          • เปิด LINE บนมือถือ → สแกน QR → กด เพิ่มเพื่อน<br>
+          <br>
+          <b>4. หา User ID:</b><br>
+          • Tab <b>"Basic settings"</b> → เลื่อนลง → คัดลอก <b>"Your user ID"</b> (ขึ้นต้นด้วย U...)<br>
+          • <b>หรือสำหรับกลุ่ม:</b> เชิญ Bot เข้ากลุ่ม → ส่งข้อความในกลุ่ม → Webhook จะ log Group ID (ขึ้นต้น C...)<br>
+          <br>
+          <b>5. ปิด Auto-reply (สำคัญ):</b><br>
+          • Tab "Messaging API" → ลิงก์ <b>"LINE Official Account features"</b><br>
+          • Greeting messages: <b>Disabled</b><br>
+          • Auto-reply: <b>Disabled</b> (ไม่งั้น bot ตอบอัตโนมัติทุกครั้ง)<br>
+          <br>
+          <b>6. ทดสอบ:</b> กด "🧪 ทดสอบส่ง" — ถ้าเห็นข้อความใน LINE = ใช้ได้ 🎉
+        </div>
+      </details>
+      ${DB.settings.lineLastSent ? `<p class="muted" style="margin-top:10px">ส่งล่าสุด: ${DB.settings.lineLastSent}</p>` : ''}
+    </div>
+    <div class="card">
       <div class="card-title">🖼️ Cloudinary - เก็บรูปคุณภาพสูง</div>
       <p class="muted" style="margin-bottom:10px">ใช้ Cloudinary เก็บรูปแทนใน Firebase (ฟรี 25 GB, รูป original quality)</p>
       ${isCloudinaryReady() ? '<div style="background:#dcfce7;color:#166534;padding:10px;border-radius:8px;font-size:13px;margin-bottom:10px">✅ Cloudinary พร้อมใช้งาน — รูปใหม่จะอัปโหลดไป Cloudinary อัตโนมัติ</div>' : '<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:13px;margin-bottom:10px">⚠️ ยังไม่ได้ตั้งค่า — รูปจะถูกย่อและเก็บใน Firebase (จำกัด 1 MB)</div>'}
@@ -3582,6 +3697,15 @@ function saveTelegram(){
   DB.settings.telegramBotToken = $('s_tgToken').value.trim();
   DB.settings.telegramChatId = $('s_tgChat').value.trim();
   log('edit-settings','แก้ไขตั้งค่า Telegram');
+  save();
+  alert('บันทึกแล้ว ✅\n\nลองกดปุ่ม "🧪 ทดสอบส่ง" เพื่อตรวจสอบ');
+  refresh();
+}
+
+function saveLine(){
+  DB.settings.lineChannelToken = $('s_lineToken').value.trim();
+  DB.settings.lineUserId = $('s_lineUser').value.trim();
+  log('edit-settings','แก้ไขตั้งค่า LINE');
   save();
   alert('บันทึกแล้ว ✅\n\nลองกดปุ่ม "🧪 ทดสอบส่ง" เพื่อตรวจสอบ');
   refresh();
