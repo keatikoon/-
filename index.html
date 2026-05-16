@@ -591,7 +591,7 @@ const ADMIN_EMAILS = ['keatikoon@gmail.com'];  // เจ้าของระบ
 const PLANS = {
   trial:    {name:'ทดลองใช้', maxCows: 5,   maxEmployees: 2, price: 0,   durationDays: 14},
   basic:    {name:'Basic',    maxCows: 30,  maxEmployees: 5, price: 199, durationDays: 30},
-  pro:      {name:'Pro',      maxCows: 200, maxEmployees: 50, price: 399, durationDays: 30},
+  pro:      {name:'Pro',      maxCows: 200, maxEmployees: 50, price: 990, durationDays: 30},
   enterprise:{name:'Enterprise', maxCows: 99999, maxEmployees: 999, price: 0, durationDays: 36500}
 };
 
@@ -646,14 +646,22 @@ function startAuthListener(){
       // โหลดข้อมูลฟาร์ม
       await loadFromCloud();
       subscribeCloud();
-      // แสดงหน้า PIN ภายในฟาร์ม
-      renderInternalLogin();
+      // ถ้ามี PIN session ที่บันทึกไว้ → restore แล้วเข้าแอพเลย ไม่ต้องใส่ PIN ซ้ำ
+      const savedSession = loadSession();
+      if(savedSession && savedSession.role && !planExpired()){
+        currentUser = savedSession;
+        enterApp();
+      } else {
+        // แสดงหน้า PIN ภายในฟาร์ม
+        renderInternalLogin();
+      }
     } else {
       authUser = null;
       userPlan = null;
       isAdmin = false;
       window.cloud.setFarmId(null);
       currentUser = null;
+      clearSession();
       if(unsubscribe){ unsubscribe(); unsubscribe = null; }
       renderLanding();
     }
