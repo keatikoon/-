@@ -14,6 +14,7 @@
 <link rel="apple-touch-icon" sizes="192x192" href="icon-192-new.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#16a34a">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -1127,8 +1128,55 @@ function checkPlanLimit(type){
 }
 
 // ============== PRICING + PAYMENT PAGE ==============
-const PROMPTPAY_NUMBER = '0812345678'; // ผู้ใช้ Parke แก้เลขนี้ใน Settings ภายหลัง
-const ADMIN_BANK = 'พร้อมเพย์: 081-234-5678 (เจ้าของระบบ)';
+const PROMPTPAY_NUMBER = '0652536145';
+const ADMIN_BANK = 'พร้อมเพย์: 065-253-6145 (FarmMeth)';
+
+// ====== PromptPay QR Code (EMV standard) ======
+// Format: https://www.bot.or.th/Thai/PaymentSystems/StandardPS/Pages/ThaiQRPayment.aspx
+function _ppCrc16(s){
+  let crc = 0xFFFF;
+  for(let i=0;i<s.length;i++){
+    crc ^= s.charCodeAt(i)<<8;
+    for(let j=0;j<8;j++){
+      crc = (crc & 0x8000) ? ((crc<<1) ^ 0x1021) : (crc<<1);
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4,'0');
+}
+function _ppTLV(id, val){ return id + String(val.length).padStart(2,'0') + val; }
+function generatePromptPayPayload(phoneOrId, amount){
+  // เบอร์: ตัด 0 ตัวแรก + prefix 0066 → 13 หลัก
+  // เลขบัตรประชาชน 13 หลัก: ใช้ตรง
+  const clean = String(phoneOrId).replace(/[^0-9]/g,'');
+  let target;
+  if(clean.length === 13){
+    target = clean; // citizen ID
+  } else {
+    const phone = clean.startsWith('0') ? clean.slice(1) : clean;
+    target = '0066' + phone; // 13 digits total
+  }
+  const merchant = _ppTLV('00','A000000677010111') + _ppTLV('01', target);
+  let data = '';
+  data += _ppTLV('00','01');
+  data += _ppTLV('01', amount > 0 ? '12' : '11');
+  data += _ppTLV('29', merchant);
+  data += _ppTLV('53','764');
+  if(amount > 0) data += _ppTLV('54', Number(amount).toFixed(2));
+  data += _ppTLV('58','TH');
+  data += '6304' + _ppCrc16(data + '6304');
+  return data;
+}
+function renderPromptPayQR(elId, phoneOrId, amount, size){
+  const payload = generatePromptPayPayload(phoneOrId, amount);
+  if(typeof qrcode === 'undefined'){
+    return '<div style="color:#dc2626;font-size:12px">โหลด QR library ไม่สำเร็จ — กรุณา refresh</div>';
+  }
+  const qr = qrcode(0, 'M');
+  qr.addData(payload);
+  qr.make();
+  return qr.createImgTag(size||4, 8); // cell size, margin
+}
 
 function showPricingPage(){
   const app = $('app');
@@ -1184,10 +1232,15 @@ function showPayment(plan){
           <div style="font-size:36px;font-weight:800;color:#16a34a">฿${p.price}</div>
           <div style="font-size:13px;color:#166534">/ ${p.durationDays} วัน</div>
         </div>
-        <div style="background:#eff6ff;padding:16px;border-radius:10px;margin-bottom:16px">
-          <div style="font-size:13px;font-weight:600;color:#1e40af;margin-bottom:8px">📱 โอนผ่าน PromptPay</div>
-          <div style="font-family:monospace;font-size:18px;letter-spacing:1px;color:#1e3a8a">${PROMPTPAY_NUMBER}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:6px">โอนเป็นยอด ฿${p.price} (เพื่อให้ตรวจสอบได้ตรง)</div>
+        <div style="background:#fff;border:2px solid #06c755;padding:16px;border-radius:12px;margin-bottom:16px;text-align:center">
+          <div style="font-size:13px;font-weight:600;color:#15803d;margin-bottom:10px">📱 สแกน PromptPay QR — ยอดและเลขถูกต้องแล้ว</div>
+          <div style="display:inline-block;background:#fff;padding:8px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+            ${renderPromptPayQR(null, PROMPTPAY_NUMBER, p.price, 5)}
+          </div>
+          <div style="margin-top:10px;font-size:13px;color:#374151">
+            พร้อมเพย์: <b style="font-family:monospace;letter-spacing:1px">${PROMPTPAY_NUMBER.replace(/(\d{3})(\d{3})(\d{4})/,'$1-$2-$3')}</b>
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:4px">เปิดแอปธนาคาร → สแกน QR → ยืนยันโอน</div>
         </div>
         <div class="field"><label>📎 อัปโหลดสลิปโอน</label>
           <input type="file" id="slipFile" accept="image/*" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-top:6px">
