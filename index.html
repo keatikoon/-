@@ -54,6 +54,15 @@ body.dark .badge.gray{background:#334155;color:#cbd5e1}
 body.dark .photo-thumb,body.dark .photo-card .photo-placeholder,body.dark .cow-card .photo-placeholder{background:#334155}
 body.dark .photo-upload{border-color:var(--border)}
 body.dark .photo-upload:hover{background:#1e293b}
+/* Dark mode: input text สีอ่อน (แก้ปัญหาพิมพ์แล้วมองไม่เห็นเพราะ default ดำ) */
+body.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="color"]):not([type="range"]):not([type="file"]),
+body.dark select,
+body.dark textarea{background:var(--input-bg);color:var(--text);border-color:var(--border)}
+body.dark input::placeholder,body.dark textarea::placeholder{color:var(--text-muted);opacity:.7}
+body.dark input[type="date"],body.dark input[type="time"],body.dark input[type="datetime-local"],body.dark input[type="month"]{color-scheme:dark}
+/* Login pages: force light bg เสมอ (ไม่ตาม dark mode เพราะ login-box เป็นสีขาว) */
+.login-box input,.login-box select,.login-box textarea{background:#fff !important;color:#111827 !important}
+.login-box input::placeholder{color:#9ca3af !important}
 #app{min-height:100vh;display:flex;flex-direction:column}
 
 /* ---- Login ---- */
