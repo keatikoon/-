@@ -655,15 +655,15 @@ function startAuthListener(){
       // โหลดข้อมูลฟาร์ม
       await loadFromCloud();
       subscribeCloud();
-      // ถ้ามี PIN session ที่บันทึกไว้ → restore แล้วเข้าแอพเลย ไม่ต้องใส่ PIN ซ้ำ
-      const savedSession = loadSession();
-      if(savedSession && savedSession.role && !planExpired()){
-        currentUser = savedSession;
-        enterApp();
-      } else {
-        // แสดงหน้า PIN ภายในฟาร์ม
+      // ถ้า plan หมดอายุ → แสดงหน้าต่ออายุ (renderInternalLogin จะ check)
+      if(planExpired()){
         renderInternalLogin();
+        return;
       }
+      // Owner ที่ login Firebase = owner ของ farm นี้ → enter app เลย ไม่ต้องเลือก role + PIN
+      currentUser = {role:'owner', name:'เจ้าของฟาร์ม'};
+      saveSession();
+      enterApp();
     } else {
       authUser = null;
       userPlan = null;
