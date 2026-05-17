@@ -525,6 +525,59 @@ let cloudReady = false;
 let unsubscribe = null;
 let isSaving = false;
 
+// ================== ERROR TRACKING → admin LINE ==================
+// ส่ง JS error ไป admin LINE ผ่าน Cloudflare Worker
+// (admin LINE token เก็บใน Worker env var, ไม่ใส่ใน client)
+const ERROR_TRACKING_URL = 'https://farmmeth-line-proxy.keatikoon.workers.dev/error';
+let _errorReportCount = 0;
+const _errorReportSent = new Set();
+
+async function reportError(message, stack, url){
+  try{
+    // Throttle: ไม่ส่ง error เดียวกันซ้ำ + จำกัด 5 errors/session
+    const fingerprint = (message||'').slice(0,80);
+    if(_errorReportSent.has(fingerprint)) return;
+    if(_errorReportCount >= 5) return;
+    _errorReportSent.add(fingerprint);
+    _errorReportCount++;
+
+    const farmId = (window.authUser?.uid) || (typeof staffFarmId !== 'undefined' && staffFarmId) || 'guest';
+    const farmName = DB?.settings?.farmName || '?';
+    const userName = currentUser?.name || (window.authUser?.email) || 'guest';
+
+    await fetch(ERROR_TRACKING_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        farm: `${farmName} (${farmId.slice(0,8)})`,
+        user: userName,
+        url: url || location.href,
+        message: String(message||'').slice(0,500),
+        stack: String(stack||'').slice(0,2000),
+        ua: navigator.userAgent
+      })
+    });
+  }catch(e){ /* silently ignore */ }
+}
+
+window.addEventListener('error', (e)=>{
+  // กรอง error จาก script ภายนอกที่อาจไม่ใช่ปัญหาเรา
+  const msg = e.message || '';
+  if(/^Script error\.?$/i.test(msg)) return;
+  if(/ResizeObserver loop/.test(msg)) return; // benign warning
+  reportError(msg, e.error?.stack || '', e.filename || location.href);
+});
+
+window.addEventListener('unhandledrejection', (e)=>{
+  const reason = e.reason;
+  let msg = '', stack = '';
+  if(reason instanceof Error){ msg = reason.message; stack = reason.stack || ''; }
+  else { msg = String(reason).slice(0,300); }
+  // กรอง Firebase / network errors บางอย่าง
+  if(/auth\/network-request-failed|Failed to fetch/i.test(msg)) return;
+  reportError('UnhandledRejection: '+msg, stack, location.href);
+});
+
 // ================== CLOUD SYNC ==================
 async function loadFromCloud(){
   if(!window.cloud) return false;
@@ -2948,30 +3001,36 @@ async function runBackupNow(silent){
     if(!silent) showToast('ต้องตั้งค่า Telegram ก่อน','error');
     return false;
   }
+  if(!window.XLSX){
+    if(!silent) showToast('Excel library กำลังโหลด รอสักครู่แล้วลองใหม่','warn');
+    return false;
+  }
   try{
-    if(!silent) showToast('กำลังสำรอง...','info');
-    // สร้างไฟล์ backup โดยตัด voiceMemo ออก (ไฟล์เล็กลง)
-    const backupData = JSON.parse(JSON.stringify(DB));
-    if(backupData.health) backupData.health.forEach(h=>{ if(h.voiceMemo) h.voiceMemo='[audio omitted]'; });
-    const json = JSON.stringify(backupData, null, 2);
-    const blob = new Blob([json], {type:'application/json'});
+    if(!silent) showToast('กำลังสร้างไฟล์ Excel...','info');
+    // สร้าง workbook ใช้ logic เดียวกับปุ่ม Export Excel
+    const wb = buildExcelWorkbook();
+    // เขียนเป็น binary array สำหรับ upload
+    const arrayBuf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+    const blob = new Blob([arrayBuf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const farmName = (DB.settings.farmName||'farm').replace(/[^a-zA-Z0-9ก-๙]/g,'_');
     const date = new Date().toISOString().slice(0,10);
-    const filename = `farmmeth_backup_${farmName}_${date}.json`;
+    const filename = `farmmeth_backup_${farmName}_${date}.xlsx`;
+    const sheetCount = wb.SheetNames.length;
 
     const form = new FormData();
     form.append('chat_id', chatId);
     form.append('document', blob, filename);
-    form.append('caption', `🐄 *FarmMeth Auto-Backup*\n📅 ${new Date().toLocaleString('th-TH')}\n🏠 ${DB.settings.farmName||'ฟาร์ม'}\n📊 วัว ${(DB.cows||[]).length} ตัว · น้ำนม ${(DB.milk||[]).length} รายการ`);
+    form.append('caption', `🐄 *FarmMeth Auto-Backup (Excel)*\n📅 ${new Date().toLocaleString('th-TH')}\n🏠 ${DB.settings.farmName||'ฟาร์ม'}\n📊 ${sheetCount} sheets · วัว ${(DB.cows||[]).length} ตัว · น้ำนม ${(DB.milk||[]).length} รายการ\n_เปิดได้ทั้ง Excel + Google Sheets_`);
     form.append('parse_mode', 'Markdown');
 
+    if(!silent) showToast('กำลังอัพโหลด...','info');
     const r = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {method:'POST', body: form});
     const j = await r.json();
     if(j.ok){
       DB.settings.lastTelegramBackup = new Date().toISOString();
       save();
-      if(!silent) showToast('สำรองสำเร็จ! ดูใน Telegram ได้เลย','success', 5000);
-      log('backup-tg','สำรองข้อมูลไป Telegram สำเร็จ');
+      if(!silent) showToast('สำรองสำเร็จ! เปิด Telegram ได้เลย','success', 5000);
+      log('backup-tg','สำรองข้อมูล Excel ไป Telegram สำเร็จ');
       return true;
     } else {
       if(!silent) showToast('สำรองล้มเหลว: '+(j.description||'unknown'),'error');
@@ -5364,7 +5423,7 @@ function renderSet(){
     </div>
     <div class="card">
       <div class="card-title">☁️ Auto-Backup ไป Telegram (รายสัปดาห์)</div>
-      <p class="muted" style="margin-bottom:10px">ส่งไฟล์ JSON ทั้งหมดของฟาร์มไปแชท Telegram <b>อัตโนมัติทุก 7 วัน</b> เพื่อกันข้อมูลหาย</p>
+      <p class="muted" style="margin-bottom:10px">ส่งไฟล์ <b>Excel (.xlsx)</b> ของฟาร์มไปแชท Telegram <b>อัตโนมัติทุก 7 วัน</b> — เปิดดูได้ทันทีใน Excel/Google Sheets</p>
       ${DB.settings.telegramBotToken && DB.settings.telegramChatId ? '' : '<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:13px;margin-bottom:10px">⚠️ ต้องตั้งค่า Telegram Bot Token + Chat ID ก่อน (ดูส่วน "📱 แจ้งเตือน Telegram" ด้านบน)</div>'}
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
         <input type="checkbox" id="s_autoBackup" ${DB.settings.autoBackupEnabled?'checked':''} onchange="DB.settings.autoBackupEnabled=this.checked;save();showToast(this.checked?'เปิด Auto-backup แล้ว':'ปิด Auto-backup แล้ว','success');refresh();">
@@ -5434,6 +5493,16 @@ function exportData(){
 // ============== EXPORT EXCEL ==============
 function exportExcel(){
   if(!window.XLSX){ alert('กำลังโหลด Excel library... รอสักครู่แล้วลองใหม่'); return; }
+  const wb = buildExcelWorkbook();
+  const farmName = (DB.settings.farmName||'farm').replace(/[^a-zA-Zก-๙0-9]/g,'_');
+  const sheetCount = wb.SheetNames.length;
+  XLSX.writeFile(wb, `${farmName}-${today()}.xlsx`);
+  log('export-excel','ส่งออก Excel '+sheetCount+' sheets');
+  alert(`✅ ส่งออก Excel สำเร็จ! (${sheetCount} sheets)\n\nรวมการวิเคราะห์:\n📊 สรุปรวม + กำไรขาดทุนรายเดือน\n🐄 กำไรรายตัววัว\n📅 น้ำนมรายวัน 31 วัน + รายเดือน\n💸 ค่าใช้จ่ายรายหมวด × เดือน\n📐 KPI รายเดือน\n📋 รายละเอียดทุกประเภท\n\nเปิดได้ทั้ง Excel และ Google Sheets`);
+}
+
+// สร้าง workbook ใช้ร่วมกับ Auto-backup
+function buildExcelWorkbook(){
   const wb = XLSX.utils.book_new();
   const cowMap = {};
   DB.cows.forEach(c=>cowMap[c.id] = c.code+' '+(c.name||''));
@@ -5796,12 +5865,7 @@ function exportExcel(){
     if(range.e.r > 0) ws['!autofilter'] = {ref: ws['!ref']};
   });
 
-  // Download
-  const farmName = (DB.settings.farmName||'farm').replace(/[^a-zA-Zก-๙0-9]/g,'_');
-  const sheetCount = wb.SheetNames.length;
-  XLSX.writeFile(wb, `${farmName}-${today()}.xlsx`);
-  log('export-excel','ส่งออก Excel '+sheetCount+' sheets');
-  alert(`✅ ส่งออก Excel สำเร็จ! (${sheetCount} sheets)\n\nรวมการวิเคราะห์:\n📊 สรุปรวม + กำไรขาดทุนรายเดือน\n🐄 กำไรรายตัววัว\n📅 น้ำนมรายวัน 31 วัน + รายเดือน\n💸 ค่าใช้จ่ายรายหมวด × เดือน\n📐 KPI รายเดือน\n📋 รายละเอียดทุกประเภท\n\nเปิดได้ทั้ง Excel และ Google Sheets`);
+  return wb;
 }
 
 function importData(){
