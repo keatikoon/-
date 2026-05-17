@@ -1312,36 +1312,17 @@ async function doSignIn(){
 
 async function doGoogleSignIn(isSignup){
   try{
-    renderLoading(); // แสดง loading ทันที — กัน UI ค้างที่ Landing
+    renderLoading(); // แสดง loading ทันที
     const result = await signInGoogle();
-    // Safety net: ถ้า auth listener ไม่ trigger ภายใน 2 วินาที → force navigate เอง
-    // (บางเบราเซอร์/บางสภาวะ popup-mode signInWithPopup ไม่ trigger onAuthStateChanged)
-    setTimeout(async ()=>{
-      if(result?.user && !currentUser){
-        console.warn('[Google SignIn] Auth listener stuck — forcing navigation');
-        try{
-          authUser = result.user;
-          isAdmin = ADMIN_EMAILS.includes(result.user.email);
-          window.cloud.setFarmId(result.user.uid);
-          userPlan = await loadUserPlan(result.user.uid);
-          await loadFromCloud();
-          subscribeCloud();
-          if(planExpired()){
-            renderInternalLogin();
-            return;
-          }
-          currentUser = {role:'owner', name: result.user.displayName || 'เจ้าของฟาร์ม'};
-          saveSession();
-          enterApp();
-        }catch(err){
-          console.error('Manual navigation failed:', err);
-          // สุดท้าย — force reload (แน่นอนทำงาน)
-          location.reload();
-        }
-      }
-    }, 2000);
+    if(result?.user){
+      // Force reload — แทนการรอ auth listener (วิธี bulletproof ที่สุด)
+      // เพราะ refresh ทำงานถูกอยู่แล้ว auth listener fire ตอน page load ปกติ
+      // กัน race condition ระหว่าง signInWithPopup กับ onAuthStateChanged
+      location.reload();
+      return;
+    }
+    renderLanding();
   }catch(e){
-    // popup ปิดเอง / blocked / cancelled
     if(e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request'){
       renderLanding();
       return;
