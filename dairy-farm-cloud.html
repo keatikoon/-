@@ -494,6 +494,8 @@ let DB = {
   bcs: [],            // Body Condition Score
   env: [],            // อุณหภูมิ/ความชื้นคอก
   heats: [],          // สัญญาณการเป็นสัด
+  sales: [],          // ขายน้ำนม (Invoice)
+  customers: [],      // ลูกค้าผู้รับซื้อ
   logs: []            // log ทุกการเปลี่ยนแปลง
 };
 
@@ -799,6 +801,84 @@ function renderLogin(){
 }
 
 // ============== LANDING PAGE ==============
+// ============== Public Cow Preview (จาก QR Code) ==============
+// ?farm=UID&cow=COWID → แสดงข้อมูลพื้นฐานวัว (ไม่ต้อง login)
+async function showPublicCowPreview(farmId, cowId){
+  renderLoading();
+  try{
+    window.cloud.setFarmId(farmId);
+    await loadFromCloud();
+    const c = (DB.cows||[]).find(x=>x.id===cowId);
+    const farmName = DB.settings?.farmName || 'ฟาร์มวัวนม';
+    const app = $('app');
+    if(!c){
+      app.innerHTML = `
+        <div class="login-wrap">
+          <div class="login-box">
+            <div class="login-logo">🐄</div>
+            <div class="login-title">ไม่พบข้อมูลวัว</div>
+            <div class="login-sub">QR Code นี้อาจหมดอายุหรือถูกลบไปแล้ว</div>
+            <a href="/" class="btn-login" style="display:inline-block;margin-top:14px;text-decoration:none;text-align:center">← กลับหน้าหลัก</a>
+          </div>
+        </div>`;
+      return;
+    }
+    const ageY = ageYears(c.birth);
+    const statusTxt = statusLabel(c.status);
+    const photo = (c.photos && c.photos[0]) || '';
+    const breedRecords = (DB.breed||[]).filter(b=>b.cowId===c.id).length;
+    const healthRecords = (DB.health||[]).filter(h=>h.cowId===c.id).length;
+    const calveCount = (DB.breed||[]).filter(b=>b.cowId===c.id && b.actualBirth).length;
+    app.innerHTML = `
+      <div style="min-height:100vh;background:linear-gradient(135deg,#15803d,#22c55e);padding:20px 12px;font-family:-apple-system,BlinkMacSystemFont,sans-serif">
+        <div style="max-width:480px;margin:auto">
+          <div style="text-align:center;color:#fff;margin-bottom:20px">
+            <div style="font-size:14px;opacity:.85">🏡 ${farmName}</div>
+          </div>
+          <div style="background:#fff;border-radius:20px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+            ${photo ? `<img src="${photo}" style="width:100%;max-height:280px;object-fit:cover;border-radius:14px;margin-bottom:16px">` : `<div style="font-size:80px;text-align:center;margin-bottom:14px">🐄</div>`}
+            <div style="text-align:center;margin-bottom:18px">
+              <div style="font-size:28px;font-weight:800;color:#111827">${c.code}</div>
+              <div style="font-size:20px;color:#374151;margin-top:4px">${c.name||''}</div>
+              <div style="display:inline-block;padding:4px 12px;background:#dcfce7;color:#15803d;border-radius:20px;font-size:13px;margin-top:8px;font-weight:600">${statusTxt}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+              <div style="background:#f9fafb;padding:12px;border-radius:10px;text-align:center">
+                <div style="font-size:11px;color:#6b7280">สายพันธุ์</div>
+                <div style="font-weight:600;color:#111827;margin-top:2px">${c.breed||'-'}</div>
+              </div>
+              <div style="background:#f9fafb;padding:12px;border-radius:10px;text-align:center">
+                <div style="font-size:11px;color:#6b7280">อายุ</div>
+                <div style="font-weight:600;color:#111827;margin-top:2px">${ageY} ปี</div>
+              </div>
+              <div style="background:#f9fafb;padding:12px;border-radius:10px;text-align:center">
+                <div style="font-size:11px;color:#6b7280">น้ำหนัก</div>
+                <div style="font-weight:600;color:#111827;margin-top:2px">${c.weight||0} กก.</div>
+              </div>
+              <div style="background:#f9fafb;padding:12px;border-radius:10px;text-align:center">
+                <div style="font-size:11px;color:#6b7280">Lactation</div>
+                <div style="font-weight:600;color:#111827;margin-top:2px">รอบที่ ${c.lactation||1}</div>
+              </div>
+            </div>
+            <div style="background:#fef3c7;border-radius:10px;padding:12px;margin-bottom:18px;font-size:13px;color:#92400e;text-align:center">
+              📊 ผสมพันธุ์ ${breedRecords} ครั้ง · คลอด ${calveCount} ครั้ง · บันทึกสุขภาพ ${healthRecords} ครั้ง
+            </div>
+            ${c.notes?`<div style="background:#f3f4f6;border-radius:10px;padding:12px;margin-bottom:18px;font-size:14px;color:#374151;line-height:1.6"><b>หมายเหตุ:</b><br>${c.notes}</div>`:''}
+            <a href="/?farm=${farmId}" style="display:block;background:#16a34a;color:#fff;text-align:center;padding:14px;border-radius:12px;font-weight:700;font-size:16px;text-decoration:none;margin-bottom:10px">🔓 Login ดูข้อมูลเต็ม</a>
+            <a href="/" style="display:block;text-align:center;color:#6b7280;font-size:13px;text-decoration:none">หรือไปหน้าหลัก FarmMeth</a>
+          </div>
+          <div style="text-align:center;margin-top:20px;color:#fff;font-size:11px;opacity:.7">
+            Powered by <a href="https://farmmeth.com" style="color:#fff">FarmMeth</a>
+          </div>
+        </div>
+      </div>`;
+  }catch(e){
+    console.error('showPublicCowPreview:', e);
+    const app = $('app');
+    app.innerHTML = `<div class="login-wrap"><div class="login-box"><div class="login-logo">⚠️</div><div class="login-title">โหลดข้อมูลไม่สำเร็จ</div><div class="login-sub">${e.message}</div><a href="/" class="btn-login" style="display:inline-block;margin-top:14px;text-decoration:none;text-align:center">← กลับหน้าหลัก</a></div></div>`;
+  }
+}
+
 // ============== Staff Login ผ่าน URL ?farm=UID ==============
 let staffFarmId = null; // เก็บ Farm ID ที่ staff เข้ามา
 
@@ -1706,6 +1786,8 @@ async function enterApp(){
   }
   // Auto-backup check (รอ 10 วินาทีให้ DB โหลดเสร็จก่อน)
   setTimeout(()=>{ try{ checkAutoBackup(); }catch(e){console.error(e);} }, 10000);
+  // Auto-open cow profile ถ้ามาจาก ?cow= URL
+  _checkPendingCow();
 }
 
 // Banner เตือนเมื่อ plan ใกล้หมดอายุ (เฉพาะ Owner)
@@ -1824,6 +1906,7 @@ function renderShell(){
     {sec:'การเงิน'},
     {p:'expenses',i:'💸',t:'ค่าใช้จ่าย'},
     {p:'income',i:'💰',t:'รายรับ'},
+    {p:'sales',i:'🧾',t:'ขายน้ำนม/Invoice'},
     {p:'reports',i:'📈',t:'รายงาน & กำไร'},
     {p:'kpi',i:'📐',t:'KPI ฟาร์ม'},
     {sec:'พนักงาน'},
@@ -1903,7 +1986,7 @@ function refresh(){
   const r = {
     dashboard:renderDash, cows:renderCows, milk:renderMilk, milkQuick:renderMilkQuick,
     feed:renderFeed, health:renderHealth, breed:renderBreed, grass:renderGrass,
-    inventory:renderInv, expenses:renderExp, income:renderInc, employees:renderEmp,
+    inventory:renderInv, expenses:renderExp, income:renderInc, sales:renderSales, employees:renderEmp,
     payroll:renderPay, reports:renderRep, kpi:renderKpi, tasks:renderTasks,
     myTasks:renderMyTasks, timeclock:renderTimeclock, calendar:renderCal,
     alerts:renderAlerts, settings:renderSet, logs:renderLogs,
@@ -2204,6 +2287,7 @@ function renderCows(){
     <div class="page-head">
       <div class="page-title">🐄 วัวในฟาร์ม (${DB.cows.length})</div>
       <div class="page-actions">
+        ${DB.cows.length ? '<button class="btn btn-sec" onclick="printAllCowQR()">🏷️ พิมพ์ QR ทุกตัว</button>' : ''}
         <button class="btn btn-primary" onclick="openCow()">➕ เพิ่มวัว</button>
       </div>
     </div>
@@ -2219,6 +2303,122 @@ function renderCows(){
         </div>
       `).join('')}
     </div>` : '<div class="empty"><div class="ic">🐄</div>ยังไม่มีวัวในฟาร์ม</div>'}`;
+}
+
+// ============== QR Code per วัว ==============
+function buildCowQRUrl(cowId){
+  const farmId = authUser?.uid || staffFarmId || (window.cloud?.farmId?.() || '');
+  return `https://farmmeth.com/?farm=${farmId}&cow=${cowId}`;
+}
+
+function buildCowQRImg(cowId, size){
+  if(typeof qrcode === 'undefined') return '<div style="color:#dc2626;font-size:12px">QR library โหลดไม่สำเร็จ</div>';
+  const url = buildCowQRUrl(cowId);
+  const qr = qrcode(0, 'M');
+  qr.addData(url);
+  qr.make();
+  return qr.createImgTag(size||4, 8);
+}
+
+// Modal โชว์ QR + ปุ่ม download/print
+function showCowQR(cowId){
+  const c = DB.cows.find(x=>x.id===cowId);
+  if(!c) return;
+  const url = buildCowQRUrl(cowId);
+  const qrHTML = buildCowQRImg(cowId, 8);
+  openModal(`
+    <h3>🏷️ QR Code: ${c.code} ${c.name||''}</h3>
+    <div style="text-align:center;padding:10px;background:#fff;border-radius:12px;margin-bottom:12px">
+      <div id="qrPrintArea" style="display:inline-block;background:#fff;padding:16px;border-radius:8px">
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">${c.code}</div>
+        <div style="font-size:13px;color:#374151;margin-bottom:10px">${c.name||''} ${c.breed?'· '+c.breed:''}</div>
+        ${qrHTML}
+        <div style="font-size:10px;color:#6b7280;margin-top:8px">${DB.settings.farmName||'ฟาร์ม'} · farmmeth.com</div>
+      </div>
+    </div>
+    <div style="background:#f3f4f6;padding:10px;border-radius:8px;font-size:12px;color:#374151;margin-bottom:12px;word-break:break-all">
+      <b>URL:</b> <span style="color:#16a34a">${url}</span>
+    </div>
+    <p class="muted" style="font-size:12px;margin-bottom:12px">💡 พิมพ์ QR แล้วเอาไปติดที่หูวัว/คอกวัว — สแกนแล้วเปิดประวัติทันที</p>
+    <div class="modal-foot">
+      <button class="btn btn-sec" onclick="closeModal()">ปิด</button>
+      <button class="btn btn-sec" onclick="navigator.clipboard.writeText('${url}').then(()=>showToast('คัดลอกแล้ว','success'))">📋 คัดลอก URL</button>
+      <button class="btn btn-primary" onclick="printSingleCowQR('${cowId}')">🖨️ พิมพ์</button>
+    </div>`);
+}
+
+// พิมพ์ QR ตัวเดียว (เปิดหน้าใหม่)
+function printSingleCowQR(cowId){
+  const c = DB.cows.find(x=>x.id===cowId);
+  if(!c) return;
+  const win = window.open('', '_blank', 'width=400,height=600');
+  win.document.write(`<!DOCTYPE html><html><head><title>QR ${c.code}</title>
+    <style>
+      @page { size: 70mm 100mm; margin: 5mm; }
+      body { font-family: -apple-system,Sukhumvit Set,sans-serif; text-align: center; padding: 10mm; }
+      .box { border: 2px solid #000; padding: 10mm; border-radius: 8mm; }
+      .code { font-size: 24pt; font-weight: 800; margin-bottom: 4mm; }
+      .name { font-size: 14pt; margin-bottom: 6mm; }
+      img { width: 60mm !important; height: 60mm !important; }
+      .farm { font-size: 9pt; color: #666; margin-top: 4mm; }
+    </style></head><body>
+    <div class="box">
+      <div class="code">${c.code}</div>
+      <div class="name">${c.name||''}</div>
+      ${buildCowQRImg(cowId, 8)}
+      <div class="farm">${DB.settings.farmName||'ฟาร์ม'}<br>farmmeth.com</div>
+    </div>
+    <script>window.onload=()=>{setTimeout(()=>window.print(), 300)}<\/script>
+    </body></html>`);
+  win.document.close();
+}
+
+// พิมพ์ QR ทั้งฟาร์ม (A4, 9 ตัว/หน้า)
+function printAllCowQR(){
+  if(!DB.cows.length){ showToast('ยังไม่มีวัวในฟาร์ม','warn'); return; }
+  const win = window.open('', '_blank', 'width=900,height=700');
+  const items = DB.cows.map(c=>`
+    <div class="qr-cell">
+      <div class="code">${c.code}</div>
+      <div class="name">${c.name||''}</div>
+      <div class="qr-img">${buildCowQRImg(c.id, 4)}</div>
+      <div class="farm">${(DB.settings.farmName||'ฟาร์ม').slice(0,20)}</div>
+    </div>
+  `).join('');
+  win.document.write(`<!DOCTYPE html><html><head><title>QR Codes ทั้งฟาร์ม</title>
+    <style>
+      @page { size: A4; margin: 10mm; }
+      body { font-family: -apple-system,Sukhumvit Set,sans-serif; margin:0; padding: 5mm; }
+      h1 { font-size: 16pt; margin: 0 0 8mm; text-align: center; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+      .qr-cell { border: 1px dashed #999; padding: 4mm; text-align: center; page-break-inside: avoid; border-radius: 4mm; }
+      .code { font-size: 14pt; font-weight: 800; margin-bottom: 1mm; }
+      .name { font-size: 10pt; color: #444; margin-bottom: 3mm; min-height: 14pt; }
+      .qr-img img { width: 35mm !important; height: 35mm !important; }
+      .farm { font-size: 7pt; color: #666; margin-top: 2mm; }
+      .footer { text-align:center; font-size:8pt; color:#999; margin-top:8mm }
+      button { padding: 10px 20px; font-size: 14px; cursor: pointer; }
+      @media print { button { display: none } }
+    </style></head><body>
+    <h1>🐄 QR Codes — ${DB.settings.farmName||'ฟาร์ม'} (${DB.cows.length} ตัว)</h1>
+    <div style="text-align:center;margin-bottom:8mm" class="no-print">
+      <button onclick="window.print()">🖨️ พิมพ์</button>
+    </div>
+    <div class="grid">${items}</div>
+    <div class="footer">Generated by FarmMeth · ${new Date().toLocaleString('th-TH')}</div>
+    </body></html>`);
+  win.document.close();
+}
+
+// Auto-open cow profile หลัง enterApp ถ้ามาจาก ?cow= URL
+function _checkPendingCow(){
+  if(window._pendingCowProfile){
+    const cid = window._pendingCowProfile;
+    window._pendingCowProfile = null;
+    setTimeout(()=>{
+      if(DB.cows.find(x=>x.id===cid)) showCowProfile(cid);
+    }, 500);
+  }
 }
 
 function statusLabel(s){
@@ -2551,6 +2751,7 @@ function renderCowProfile(id){
       <div class="page-title">🐄 ${c.code} - ${c.name||''}</div>
       <div class="page-actions">
         <button class="btn btn-sec" onclick="showPage('cows')">← กลับ</button>
+        <button class="btn btn-sec" onclick="showCowQR('${id}')">🏷️ QR</button>
         <button class="btn btn-primary" onclick="openCow('${id}')">✏️ แก้ไข</button>
       </div>
     </div>
@@ -3862,6 +4063,397 @@ function delInc(id){
   save(); closeModal(); refresh();
 }
 
+// ================== ขายน้ำนม / INVOICE ==================
+function renderSales(){
+  if(!DB.sales) DB.sales = [];
+  if(!DB.customers) DB.customers = [];
+  const data = filterByDate(DB.sales,'sales','month').sort((a,b)=>b.date.localeCompare(a.date));
+  const totalGross = data.reduce((s,x)=>s+(+x.gross||0),0);
+  const totalNet = data.reduce((s,x)=>s+(+x.net||0),0);
+  const totalDeduct = totalGross - totalNet;
+  const unpaid = data.filter(x=>x.status==='unpaid').reduce((s,x)=>s+(+x.net||0),0);
+  $('pageContent').innerHTML = `
+    <div class="page-head">
+      <div class="page-title">🧾 ขายน้ำนม / Invoice</div>
+      <div class="page-actions">
+        <button class="btn btn-sec" onclick="openCustomerList()">👥 ลูกค้า (${DB.customers.length})</button>
+        <button class="btn btn-primary" onclick="openSale()">➕ บันทึกขาย</button>
+      </div>
+    </div>
+    ${rangeBar('sales','month')}
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-label">ยอดขายรวม</div><div class="stat-value">${money(totalGross)}</div></div>
+      <div class="stat red"><div class="stat-label">หักรวม</div><div class="stat-value">${money(totalDeduct)}</div></div>
+      <div class="stat amber"><div class="stat-label">ยอดสุทธิ</div><div class="stat-value">${money(totalNet)}</div></div>
+      <div class="stat ${unpaid>0?'red':'blue'}"><div class="stat-label">ยังไม่ชำระ</div><div class="stat-value">${money(unpaid)}</div></div>
+    </div>
+    <div class="table-wrap"><table>
+      <tr><th>เลขที่</th><th>วันที่</th><th>ผู้ซื้อ</th><th>ปริมาณ</th><th>ยอดรวม</th><th>หัก</th><th>สุทธิ</th><th>สถานะ</th><th></th></tr>
+      ${data.map(s=>{
+        const cust = (DB.customers||[]).find(c=>c.id===s.customerId);
+        return `<tr>
+          <td><b>${s.invoiceNo||'-'}</b></td>
+          <td>${s.date}</td>
+          <td>${cust?cust.name:'(ลบแล้ว)'}</td>
+          <td>${fmt(s.qty)} L × ${money(s.price)}</td>
+          <td class="right">${money(s.gross)}</td>
+          <td class="right" style="color:#dc2626">-${money(s.gross-s.net)}</td>
+          <td class="right"><b>${money(s.net)}</b></td>
+          <td><span class="badge ${s.status==='paid'?'green':'amber'}">${s.status==='paid'?'ชำระแล้ว':'รอชำระ'}</span></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-sec btn-sm" onclick="printInvoice('${s.id}')" title="พิมพ์ Invoice">🖨️</button>
+            <button class="btn btn-sec btn-sm" onclick="openSale('${s.id}')">✏️</button>
+          </td>
+        </tr>`;
+      }).join('')||'<tr><td colspan="9" class="empty">ยังไม่มีรายการขาย</td></tr>'}
+    </table></div>`;
+}
+
+function openSale(id){
+  if(!DB.customers) DB.customers = [];
+  if(!DB.customers.length){
+    if(confirm('ยังไม่มีลูกค้า ต้องเพิ่มลูกค้าก่อน — เพิ่มเลยไหม?')) openCustomerEdit();
+    return;
+  }
+  const s = id ? DB.sales.find(x=>x.id===id) : {
+    invoiceNo: generateInvoiceNo(),
+    date: today(),
+    customerId: DB.customers[0]?.id,
+    qty: '', price: DB.settings.milkPrice||0,
+    gross: 0,
+    dShipping:0, dQuality:0, dCoop:0, dOther:0, dOtherNote:'',
+    net: 0, status:'unpaid', note:''
+  };
+  openModal(`
+    <h3>${id?'แก้ไข':'บันทึก'}ขายน้ำนม</h3>
+    <div class="form-grid">
+      <div class="field"><label>เลขที่ Invoice</label><input id="sf_no" value="${s.invoiceNo||generateInvoiceNo()}"></div>
+      <div class="field"><label>วันที่</label><input type="date" id="sf_date" value="${s.date}"></div>
+      <div class="field" style="grid-column:1/-1"><label>ผู้ซื้อ (สหกรณ์/โรงงาน)</label>
+        <select id="sf_cust" style="width:100%">
+          ${DB.customers.map(c=>`<option value="${c.id}" ${s.customerId===c.id?'selected':''}>${c.name}${c.code?' ('+c.code+')':''}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-sec btn-sm" style="margin-top:6px" onclick="openCustomerEdit()">➕ เพิ่มลูกค้าใหม่</button>
+      </div>
+      <div class="field"><label>ปริมาณ (ลิตร)</label><input type="number" step="0.1" id="sf_qty" value="${s.qty||''}" oninput="calcSale()"></div>
+      <div class="field"><label>ราคา/ลิตร (บาท)</label><input type="number" step="0.01" id="sf_price" value="${s.price||0}" oninput="calcSale()"></div>
+      <div class="field" style="grid-column:1/-1"><label>ยอดรวม (Gross)</label><input type="number" step="0.01" id="sf_gross" value="${s.gross||0}" readonly style="background:#f9fafb;font-weight:600"></div>
+    </div>
+    <div style="margin-top:14px;padding:12px;background:#fef3c7;border-radius:8px">
+      <div style="font-weight:600;color:#92400e;margin-bottom:8px">📉 รายการหัก</div>
+      <div class="form-grid">
+        <div class="field"><label>ค่าขนส่ง</label><input type="number" step="0.01" id="sf_dShip" value="${s.dShipping||0}" oninput="calcSale()"></div>
+        <div class="field"><label>ค่าทดสอบ/แล็บ</label><input type="number" step="0.01" id="sf_dQ" value="${s.dQuality||0}" oninput="calcSale()"></div>
+        <div class="field"><label>ค่าธรรมเนียมสหกรณ์</label><input type="number" step="0.01" id="sf_dCoop" value="${s.dCoop||0}" oninput="calcSale()"></div>
+        <div class="field"><label>หักอื่นๆ</label><input type="number" step="0.01" id="sf_dOther" value="${s.dOther||0}" oninput="calcSale()"></div>
+        <div class="field" style="grid-column:1/-1"><label>หมายเหตุ "หักอื่นๆ"</label><input id="sf_dOtherNote" value="${s.dOtherNote||''}" placeholder="เช่น ค่าถัง, ค่าฝาก..."></div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:14px;background:#dcfce7;border-radius:8px;text-align:center">
+      <div style="font-size:13px;color:#15803d">ยอดสุทธิที่จะได้รับ</div>
+      <div style="font-size:28px;font-weight:800;color:#15803d" id="sf_netDisplay">฿${(s.net||0).toLocaleString('th-TH')}</div>
+      <input type="hidden" id="sf_net" value="${s.net||0}">
+    </div>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="field"><label>สถานะ</label><select id="sf_status">
+        <option value="unpaid" ${s.status==='unpaid'?'selected':''}>รอชำระ</option>
+        <option value="paid" ${s.status==='paid'?'selected':''}>ชำระแล้ว</option>
+      </select></div>
+      <div class="field"><label>วันที่ชำระ</label><input type="date" id="sf_paidDate" value="${s.paidDate||''}"></div>
+    </div>
+    <div class="field" style="margin-top:12px"><label>หมายเหตุ</label><textarea id="sf_note">${s.note||''}</textarea></div>
+    <div class="modal-foot">
+      ${id?'<button class="btn btn-danger" onclick="delSale(\''+id+'\')">🗑️ ลบ</button>':''}
+      <button class="btn btn-sec" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveSale('${id||''}')">💾 บันทึก</button>
+    </div>`);
+  // คำนวณครั้งแรก
+  setTimeout(calcSale, 50);
+}
+
+function calcSale(){
+  const q = +$('sf_qty').value || 0;
+  const p = +$('sf_price').value || 0;
+  const gross = +(q*p).toFixed(2);
+  const dShip = +$('sf_dShip').value || 0;
+  const dQ = +$('sf_dQ').value || 0;
+  const dCoop = +$('sf_dCoop').value || 0;
+  const dOther = +$('sf_dOther').value || 0;
+  const net = +(gross - dShip - dQ - dCoop - dOther).toFixed(2);
+  $('sf_gross').value = gross;
+  $('sf_net').value = net;
+  $('sf_netDisplay').innerHTML = '฿'+net.toLocaleString('th-TH',{minimumFractionDigits:2});
+}
+
+function generateInvoiceNo(){
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth()+1).padStart(2,'0');
+  const d = String(today.getDate()).padStart(2,'0');
+  const prefix = `INV${y}${m}${d}`;
+  // นับ invoice ของวันนี้ +1
+  const todaySales = (DB.sales||[]).filter(s=>s.invoiceNo && s.invoiceNo.startsWith(prefix));
+  return `${prefix}-${String(todaySales.length+1).padStart(3,'0')}`;
+}
+
+function saveSale(id){
+  const data = {
+    invoiceNo: $('sf_no').value.trim(),
+    date: $('sf_date').value,
+    customerId: $('sf_cust').value,
+    qty: +$('sf_qty').value || 0,
+    price: +$('sf_price').value || 0,
+    gross: +$('sf_gross').value || 0,
+    dShipping: +$('sf_dShip').value || 0,
+    dQuality: +$('sf_dQ').value || 0,
+    dCoop: +$('sf_dCoop').value || 0,
+    dOther: +$('sf_dOther').value || 0,
+    dOtherNote: $('sf_dOtherNote').value,
+    net: +$('sf_net').value || 0,
+    status: $('sf_status').value,
+    paidDate: $('sf_paidDate').value,
+    note: $('sf_note').value,
+    recordedBy: currentUser.name
+  };
+  if(!data.qty || !data.price){ alert('กรุณากรอกปริมาณ + ราคา'); return; }
+  if(!data.customerId){ alert('กรุณาเลือกผู้ซื้อ'); return; }
+
+  // เช็คซ้ำเลข Invoice
+  const dup = (DB.sales||[]).find(s=>s.invoiceNo===data.invoiceNo && s.id!==id);
+  if(dup){ alert('เลขที่ Invoice ซ้ำ — กรุณาเปลี่ยน'); return; }
+
+  if(!DB.sales) DB.sales = [];
+  if(id){
+    Object.assign(DB.sales.find(x=>x.id===id), data);
+    log('edit-sale', data.invoiceNo+' '+money(data.net));
+  } else {
+    data.id = uid();
+    DB.sales.push(data);
+    log('add-sale', data.invoiceNo+' '+money(data.net));
+  }
+
+  // Auto-add to income ถ้าชำระแล้ว
+  if(data.status==='paid'){
+    // ลบ income เก่าที่อ้างถึง invoice นี้ (ถ้ามี)
+    DB.income = (DB.income||[]).filter(i=>i.saleId !== (id||data.id));
+    DB.income.push({
+      id: uid(),
+      saleId: id || data.id,
+      date: data.paidDate || data.date,
+      type: 'ขายน้ำนม',
+      qty: data.qty,
+      unit: 'L',
+      price: data.price,
+      amount: data.net,
+      note: `Invoice ${data.invoiceNo}`,
+      recordedBy: currentUser.name
+    });
+  } else {
+    // ลบ income ถ้าเปลี่ยนเป็น unpaid
+    DB.income = (DB.income||[]).filter(i=>i.saleId !== (id||data.id));
+  }
+  save(); closeModal(); refresh();
+  showToast(id?'อัพเดทแล้ว':'บันทึกขายเรียบร้อย','success');
+}
+
+function delSale(id){
+  if(!confirm('ลบรายการขายนี้? (รายรับที่เชื่อมจะถูกลบด้วย)')) return;
+  DB.sales = (DB.sales||[]).filter(x=>x.id!==id);
+  DB.income = (DB.income||[]).filter(i=>i.saleId !== id);
+  log('del-sale','ลบรายการขาย');
+  save(); closeModal(); refresh();
+}
+
+// ลูกค้า
+function openCustomerList(){
+  if(!DB.customers) DB.customers = [];
+  openModal(`
+    <h3>👥 รายชื่อลูกค้า/ผู้รับซื้อ</h3>
+    <div style="margin-bottom:12px">
+      <button class="btn btn-primary" onclick="openCustomerEdit()">➕ เพิ่มลูกค้า</button>
+    </div>
+    <div class="table-wrap"><table>
+      <tr><th>รหัส</th><th>ชื่อ</th><th>เบอร์โทร</th><th>ที่อยู่</th><th></th></tr>
+      ${DB.customers.map(c=>`<tr>
+        <td>${c.code||'-'}</td>
+        <td><b>${c.name}</b></td>
+        <td>${c.phone||'-'}</td>
+        <td>${(c.address||'').slice(0,40)}${(c.address||'').length>40?'...':''}</td>
+        <td><button class="btn btn-sec btn-sm" onclick="openCustomerEdit('${c.id}')">✏️</button></td>
+      </tr>`).join('')||'<tr><td colspan="5" class="empty">ยังไม่มีลูกค้า</td></tr>'}
+    </table></div>
+    <div class="modal-foot">
+      <button class="btn btn-sec" onclick="closeModal()">ปิด</button>
+    </div>`);
+}
+
+function openCustomerEdit(id){
+  if(!DB.customers) DB.customers = [];
+  const c = id ? DB.customers.find(x=>x.id===id) : {name:'',code:'',phone:'',address:'',taxId:''};
+  openModal(`
+    <h3>${id?'แก้ไข':'เพิ่ม'}ลูกค้า</h3>
+    <div class="form-grid">
+      <div class="field" style="grid-column:1/-1"><label>ชื่อ/บริษัท *</label><input id="cf_name" value="${c.name||''}" placeholder="เช่น สหกรณ์โคนม XXX"></div>
+      <div class="field"><label>รหัสลูกค้า</label><input id="cf_code" value="${c.code||''}" placeholder="C001"></div>
+      <div class="field"><label>เบอร์โทร</label><input id="cf_phone" value="${c.phone||''}"></div>
+      <div class="field" style="grid-column:1/-1"><label>ที่อยู่</label><textarea id="cf_addr">${c.address||''}</textarea></div>
+      <div class="field"><label>เลขประจำตัวผู้เสียภาษี (ถ้ามี)</label><input id="cf_tax" value="${c.taxId||''}"></div>
+    </div>
+    <div class="modal-foot">
+      ${id?'<button class="btn btn-danger" onclick="delCustomer(\''+id+'\')">🗑️ ลบ</button>':''}
+      <button class="btn btn-sec" onclick="openCustomerList()">← กลับ</button>
+      <button class="btn btn-primary" onclick="saveCustomer('${id||''}')">💾 บันทึก</button>
+    </div>`);
+}
+
+function saveCustomer(id){
+  const data = {
+    name: $('cf_name').value.trim(),
+    code: $('cf_code').value.trim(),
+    phone: $('cf_phone').value.trim(),
+    address: $('cf_addr').value.trim(),
+    taxId: $('cf_tax').value.trim()
+  };
+  if(!data.name){ alert('กรุณากรอกชื่อลูกค้า'); return; }
+  if(!DB.customers) DB.customers = [];
+  if(id){
+    Object.assign(DB.customers.find(x=>x.id===id), data);
+    log('edit-customer', data.name);
+  } else {
+    data.id = uid();
+    DB.customers.push(data);
+    log('add-customer', data.name);
+  }
+  save();
+  showToast('บันทึกลูกค้าแล้ว','success');
+  openCustomerList();
+}
+
+function delCustomer(id){
+  const used = (DB.sales||[]).some(s=>s.customerId===id);
+  if(used){ alert('ลบไม่ได้ — ลูกค้านี้มีรายการขายอยู่'); return; }
+  if(!confirm('ลบลูกค้านี้?')) return;
+  DB.customers = DB.customers.filter(x=>x.id!==id);
+  log('del-customer','ลบลูกค้า');
+  save();
+  openCustomerList();
+}
+
+// ออก Invoice PDF (print-friendly HTML ในหน้าใหม่)
+function printInvoice(id){
+  const s = (DB.sales||[]).find(x=>x.id===id);
+  if(!s){ showToast('ไม่พบรายการขาย','error'); return; }
+  const cust = (DB.customers||[]).find(c=>c.id===s.customerId) || {name:'(ไม่ระบุ)'};
+  const farmName = DB.settings.farmName || 'ฟาร์มวัวนม';
+  const ownerPhone = DB.settings.ownerPhone || '';
+  const farmAddress = DB.settings.farmAddress || '';
+  const dateThai = new Date(s.date).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'});
+  const numTH = n => (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2, maximumFractionDigits:2});
+  const deductRows = [];
+  if(s.dShipping>0) deductRows.push(['ค่าขนส่ง', s.dShipping]);
+  if(s.dQuality>0) deductRows.push(['ค่าทดสอบคุณภาพ/แล็บ', s.dQuality]);
+  if(s.dCoop>0) deductRows.push(['ค่าธรรมเนียมสหกรณ์', s.dCoop]);
+  if(s.dOther>0) deductRows.push([s.dOtherNote||'หักอื่นๆ', s.dOther]);
+  const totalDeduct = (s.gross||0) - (s.net||0);
+
+  const win = window.open('', '_blank', 'width=900,height=1100');
+  win.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
+    <title>Invoice ${s.invoiceNo}</title>
+    <style>
+      @page { size: A4; margin: 15mm; }
+      * { box-sizing: border-box; margin:0; padding:0; }
+      body { font-family: -apple-system, "Sukhumvit Set", "Noto Sans Thai", sans-serif; color:#1f2937; line-height:1.5; padding:20px; max-width:800px; margin:auto; }
+      .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:20px; border-bottom:3px solid #15803d; margin-bottom:24px; }
+      .farm-info h1 { font-size:24pt; color:#15803d; margin-bottom:4px; }
+      .farm-info p { font-size:11pt; color:#6b7280; }
+      .invoice-badge { text-align:right; }
+      .invoice-badge h2 { font-size:28pt; color:#1f2937; margin-bottom:4px; }
+      .invoice-badge .no { font-size:14pt; color:#16a34a; font-weight:600; }
+      .invoice-badge .date { font-size:11pt; color:#6b7280; margin-top:6px; }
+      .billto { margin-bottom:20px; padding:14px; background:#f9fafb; border-radius:8px; }
+      .billto h3 { font-size:11pt; color:#6b7280; margin-bottom:4px; text-transform:uppercase; letter-spacing:1px; }
+      .billto .name { font-size:14pt; font-weight:600; color:#111827; }
+      .billto .meta { font-size:10pt; color:#4b5563; margin-top:4px; }
+      table.items { width:100%; border-collapse:collapse; margin-bottom:20px; }
+      table.items th { background:#15803d; color:#fff; padding:10px; text-align:left; font-size:11pt; }
+      table.items td { padding:10px; border-bottom:1px solid #e5e7eb; font-size:11pt; }
+      table.items .right { text-align:right; }
+      .totals { margin-left:auto; width:50%; }
+      .totals table { width:100%; border-collapse:collapse; }
+      .totals td { padding:6px 10px; font-size:11pt; }
+      .totals tr.gross td { border-top:1px solid #e5e7eb; }
+      .totals tr.net td { border-top:2px solid #15803d; font-size:14pt; font-weight:700; color:#15803d; padding-top:10px; }
+      .totals td.right { text-align:right; }
+      .status { display:inline-block; padding:4px 14px; border-radius:20px; font-size:10pt; font-weight:600; }
+      .status.paid { background:#dcfce7; color:#15803d; }
+      .status.unpaid { background:#fef3c7; color:#92400e; }
+      .footer { margin-top:40px; border-top:1px solid #e5e7eb; padding-top:20px; display:flex; justify-content:space-between; font-size:10pt; color:#6b7280; }
+      .signature { text-align:center; }
+      .signature .line { border-bottom:1px solid #6b7280; width:200px; margin-bottom:6px; height:50px; }
+      .note { margin-top:14px; padding:10px; background:#fffbeb; border-left:3px solid #f59e0b; font-size:10pt; color:#92400e; }
+      .deduct-row td { color:#dc2626; }
+      button.print-btn { padding:12px 24px; background:#15803d; color:#fff; border:none; border-radius:8px; font-size:14px; cursor:pointer; margin:20px auto; display:block; }
+      @media print { button.print-btn { display:none; } body { padding:0; } }
+    </style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨️ พิมพ์ Invoice</button>
+    <div class="header">
+      <div class="farm-info">
+        <h1>🐄 ${farmName}</h1>
+        ${farmAddress?`<p>${farmAddress}</p>`:''}
+        ${ownerPhone?`<p>📞 ${ownerPhone}</p>`:''}
+      </div>
+      <div class="invoice-badge">
+        <h2>INVOICE</h2>
+        <div class="no">${s.invoiceNo}</div>
+        <div class="date">วันที่: ${dateThai}</div>
+        <div style="margin-top:8px"><span class="status ${s.status==='paid'?'paid':'unpaid'}">${s.status==='paid'?'✓ ชำระแล้ว':'⏳ รอชำระ'}</span></div>
+      </div>
+    </div>
+    <div class="billto">
+      <h3>ผู้รับซื้อ / Bill To</h3>
+      <div class="name">${cust.name}</div>
+      ${cust.address?`<div class="meta">${cust.address}</div>`:''}
+      ${cust.phone?`<div class="meta">📞 ${cust.phone}</div>`:''}
+      ${cust.taxId?`<div class="meta">เลขผู้เสียภาษี: ${cust.taxId}</div>`:''}
+    </div>
+    <table class="items">
+      <tr><th>รายการ</th><th class="right">ปริมาณ</th><th class="right">ราคา/หน่วย</th><th class="right">รวม</th></tr>
+      <tr>
+        <td>น้ำนมดิบ</td>
+        <td class="right">${numTH(s.qty)} L</td>
+        <td class="right">${numTH(s.price)} ฿/L</td>
+        <td class="right">${numTH(s.gross)} ฿</td>
+      </tr>
+    </table>
+    <div class="totals">
+      <table>
+        <tr class="gross"><td>ยอดรวม (Gross):</td><td class="right">${numTH(s.gross)} ฿</td></tr>
+        ${deductRows.map(([label,amt])=>`<tr class="deduct-row"><td>− ${label}:</td><td class="right">-${numTH(amt)} ฿</td></tr>`).join('')}
+        ${totalDeduct>0?`<tr><td>รวมหัก:</td><td class="right" style="color:#dc2626">-${numTH(totalDeduct)} ฿</td></tr>`:''}
+        <tr class="net"><td>ยอดสุทธิ:</td><td class="right">${numTH(s.net)} ฿</td></tr>
+      </table>
+    </div>
+    ${s.note?`<div class="note"><b>หมายเหตุ:</b> ${s.note}</div>`:''}
+    <div class="footer">
+      <div class="signature">
+        <div class="line"></div>
+        <div>ผู้รับเงิน</div>
+        <div style="font-size:9pt;margin-top:4px">(${farmName})</div>
+      </div>
+      <div class="signature">
+        <div class="line"></div>
+        <div>ผู้จ่ายเงิน</div>
+        <div style="font-size:9pt;margin-top:4px">(${cust.name})</div>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:30px;font-size:9pt;color:#9ca3af">
+      ออกโดย FarmMeth · farmmeth.com · พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')}
+    </div>
+    <script>window.onload=()=>{setTimeout(()=>window.print(), 500)}<\/script>
+    </body></html>`);
+  win.document.close();
+}
+
 // ================== EMPLOYEES ==================
 function renderEmp(){
   // Farm ID = uid ของ owner (Firebase Auth) — ใช้สำหรับลิงก์ให้พนักงาน login
@@ -4528,6 +5120,8 @@ function renderSet(){
         <div class="field"><label>ชื่อฟาร์ม</label><input id="s_name" value="${DB.settings.farmName||''}"></div>
         <div class="field"><label>ราคาน้ำนมปัจจุบัน (บาท/ลิตร)</label><input type="number" step="0.01" id="s_milk" value="${DB.settings.milkPrice||0}"></div>
         <div class="field"><label>PIN เจ้าของฟาร์ม (4-6 หลัก)</label><input id="s_pin" value="${DB.settings.ownerPin||'1234'}" maxlength="6"></div>
+        <div class="field"><label>เบอร์โทรฟาร์ม</label><input id="s_phone" value="${DB.settings.ownerPhone||''}" placeholder="0812345678"></div>
+        <div class="field" style="grid-column:1/-1"><label>ที่อยู่ฟาร์ม (สำหรับใบ Invoice)</label><textarea id="s_addr" rows="2" placeholder="123 หมู่ 4 ต.บ้านโพ อ.เมือง จ.นครราชสีมา 30000">${DB.settings.farmAddress||''}</textarea></div>
       </div>
       <button class="btn btn-primary" style="margin-top:14px" onclick="saveSettings()">💾 บันทึก</button>
     </div>
@@ -4720,6 +5314,8 @@ function saveSettings(){
   DB.settings.milkPrice = +$('s_milk').value || 0;
   const pin = $('s_pin').value;
   if(pin && pin.length>=4) DB.settings.ownerPin = pin;
+  if($('s_phone')) DB.settings.ownerPhone = $('s_phone').value.trim();
+  if($('s_addr')) DB.settings.farmAddress = $('s_addr').value.trim();
   log('edit-settings','แก้ไขตั้งค่าฟาร์ม');
   save();
   alert('บันทึกแล้ว ✅');
@@ -5481,8 +6077,20 @@ function startApp(){
   // เช็ค URL `?farm=UID` → โหมด staff login (สำหรับพนักงานที่ owner share ลิงก์)
   const params = new URLSearchParams(location.search);
   const staffFarmParam = params.get('farm');
+  const cowParam = params.get('cow');
   // ใช้โหมด staff direct ถ้า: มี ?farm + ไม่ได้ login Firebase Auth + window.cloud พร้อม
   const hasFirebaseSession = Object.keys(localStorage).some(k => k.startsWith('firebase:authUser'));
+
+  // ?farm=UID&cow=COWID → QR Code scan → แสดงข้อมูลพื้นฐานวัว (ไม่ต้อง login)
+  if(cowParam && staffFarmParam && !hasFirebaseSession){
+    showPublicCowPreview(staffFarmParam, cowParam);
+    return;
+  }
+  // ถ้า login อยู่แล้ว + มี ?cow= → จำไว้เพื่อ auto-open หลัง enterApp
+  if(cowParam){
+    window._pendingCowProfile = cowParam;
+  }
+
   if(staffFarmParam && window.cloud && !hasFirebaseSession){
     startStaffLogin(staffFarmParam);
     return;

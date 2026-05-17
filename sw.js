@@ -1,5 +1,5 @@
-// FarmMeth Service Worker v4
-const CACHE = 'farmmeth-v4';
+// FarmMeth Service Worker v5
+const CACHE = 'farmmeth-v5';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
