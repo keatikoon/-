@@ -2298,6 +2298,7 @@ function renderDash(){
     <div class="page-head">
       <div class="page-title">📊 แดชบอร์ด</div>
       <div class="page-actions">
+        ${isAdmin?'<button class="btn btn-sec" style="background:#dc2626;color:#fff;border:none" onclick="showAdminPage()" title="หน้า Admin (เห็นเฉพาะคุณ)">👑 Admin</button>':''}
         <button class="btn btn-sec" onclick="startTutorial()" title="ทัวร์สอนใช้งาน">📖 สอนใช้งาน</button>
         <button class="btn btn-sec" onclick="toggleDark()" title="สลับโหมดมืด/สว่าง">${document.body.classList.contains('dark')?'☀️':'🌙'}</button>
         <button class="btn btn-sec" onclick="showPage('alerts')">🔔 แจ้งเตือน (${countAlerts()})</button>
