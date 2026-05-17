@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>นโยบายความเป็นส่วนตัว — FarmMeth</title>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192-new.png">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Sukhumvit Set","Noto Sans Thai",sans-serif;background:#f3f4f6;color:#1f2937;line-height:1.7;padding:30px 20px}
+.container{max-width:780px;margin:auto;background:#fff;padding:40px 32px;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.06)}
+h1{font-size:28px;color:#15803d;margin-bottom:6px}
+.sub{color:#6b7280;font-size:14px;margin-bottom:30px}
+h2{font-size:18px;color:#111827;margin-top:28px;margin-bottom:12px;padding-top:14px;border-top:1px solid #e5e7eb}
+h2:first-of-type{border-top:none;padding-top:0}
+p,li{font-size:15px;color:#374151;margin-bottom:10px}
+ul,ol{padding-left:22px;margin-bottom:12px}
+a{color:#16a34a}
+.back{display:inline-block;margin-bottom:20px;color:#16a34a;text-decoration:none;font-size:14px}
+.back:hover{text-decoration:underline}
+.box{background:#f9fafb;border-left:4px solid #16a34a;padding:14px 18px;border-radius:8px;margin:14px 0;font-size:14px}
+</style>
+</head>
+<body>
+<div class="container">
+<a href="/" class="back">← กลับหน้าหลัก</a>
+<h1>นโยบายความเป็นส่วนตัว</h1>
+<div class="sub">FarmMeth — ระบบจัดการฟาร์มวัวนม · ปรับปรุงล่าสุด: 17 พฤษภาคม 2569</div>
+
+<p>FarmMeth ("เรา") เคารพและให้ความสำคัญกับความเป็นส่วนตัวของผู้ใช้บริการ ("ท่าน") เอกสารฉบับนี้อธิบายว่าเราเก็บข้อมูลใดบ้าง ใช้อย่างไร และท่านมีสิทธิ์อย่างไรตาม <b>พระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (PDPA)</b></p>
+
+<h2>1. ข้อมูลที่เราเก็บ</h2>
+<ul>
+<li><b>ข้อมูลบัญชี:</b> อีเมล, ชื่อ-นามสกุล, เบอร์โทรศัพท์, ชื่อฟาร์ม, รหัสผ่าน (เข้ารหัส)</li>
+<li><b>ข้อมูลฟาร์ม:</b> รายชื่อวัว, บันทึกน้ำนม, สุขภาพ, ค่าใช้จ่าย, รายรับ, พนักงาน — ข้อมูลที่ท่านป้อนเอง</li>
+<li><b>ข้อมูลการชำระเงิน:</b> สลิปโอนเงิน, แผนที่เลือก — ไม่เก็บข้อมูลบัตรเครดิต</li>
+<li><b>ข้อมูลการใช้งาน:</b> log การ login, การบันทึกกิจกรรม — เพื่อความปลอดภัย</li>
+</ul>
+
+<h2>2. วัตถุประสงค์ในการเก็บข้อมูล</h2>
+<ul>
+<li>ให้บริการระบบจัดการฟาร์มตามที่ท่านสมัครใช้</li>
+<li>ติดต่อท่านเรื่องบัญชี ใบเสร็จ หรือการแจ้งเตือนสำคัญ</li>
+<li>ปรับปรุงคุณภาพบริการและฟีเจอร์</li>
+<li>ปฏิบัติตามกฎหมายและข้อกำหนดทางบัญชี</li>
+</ul>
+
+<h2>3. การจัดเก็บข้อมูล</h2>
+<p>ข้อมูลของท่านจัดเก็บใน <b>Google Firebase Firestore</b> (ศูนย์ข้อมูลภูมิภาคเอเชียตะวันออกเฉียงใต้ — สิงคโปร์) ซึ่งมีระบบความปลอดภัยมาตรฐานสากล ISO 27001</p>
+<div class="box">
+ข้อมูลฟาร์มของท่านถูกแยกออกจากฟาร์มอื่นด้วย Farm ID เฉพาะ (Multi-tenant Architecture) ฟาร์มอื่นไม่สามารถเข้าถึงข้อมูลของท่านได้
+</div>
+
+<h2>4. การเปิดเผยข้อมูลต่อบุคคลที่สาม</h2>
+<p>เราไม่ขาย หรือแบ่งปันข้อมูลของท่านกับบุคคลที่สามเพื่อวัตถุประสงค์ทางการตลาด ยกเว้น:</p>
+<ul>
+<li>ผู้ให้บริการที่จำเป็น (Google Firebase, Cloudinary สำหรับเก็บรูป, Telegram/LINE สำหรับการแจ้งเตือนที่ท่านเปิดใช้เอง)</li>
+<li>กรณีกฎหมายบังคับ หรือคำสั่งศาล</li>
+</ul>
+
+<h2>5. สิทธิ์ของท่าน (ตาม PDPA)</h2>
+<ul>
+<li><b>สิทธิ์เข้าถึง:</b> ขอดูข้อมูลที่เราเก็บได้ทุกเวลา ผ่านเมนู "ส่งออกข้อมูล JSON" ในแอพ</li>
+<li><b>สิทธิ์แก้ไข:</b> แก้ไขข้อมูลฟาร์มได้ทุกเวลา</li>
+<li><b>สิทธิ์ลบ:</b> ขอลบบัญชีและข้อมูลทั้งหมด — แจ้งทาง LINE OA หรืออีเมล</li>
+<li><b>สิทธิ์ถอนความยินยอม:</b> ยกเลิกการใช้งานและขอลบข้อมูลได้</li>
+<li><b>สิทธิ์ร้องเรียน:</b> สามารถร้องเรียนต่อสำนักงานคณะกรรมการคุ้มครองข้อมูลส่วนบุคคล</li>
+</ul>
+
+<h2>6. ระยะเวลาเก็บข้อมูล</h2>
+<p>เราเก็บข้อมูลของท่านตราบเท่าที่ท่านยังใช้บริการ และเก็บต่ออีก 90 วันหลังเลิกใช้งาน เพื่อให้ท่านสามารถกู้คืนได้ จากนั้นจะลบอย่างถาวร</p>
+
+<h2>7. คุกกี้ (Cookies) และเทคโนโลยีจัดเก็บข้อมูล</h2>
+<p>เราใช้ <code>localStorage</code> และ Service Worker ในเครื่องของท่าน เพื่อ:</p>
+<ul>
+<li>เก็บ session การ login (ไม่ต้อง login ซ้ำทุกครั้ง)</li>
+<li>เก็บข้อมูลสำรองในเครื่อง (ใช้งานออฟไลน์)</li>
+</ul>
+
+<h2>8. การเปลี่ยนแปลงนโยบาย</h2>
+<p>หากมีการเปลี่ยนแปลง เราจะแจ้งให้ทราบทางอีเมล หรือ ในแอพล่วงหน้าอย่างน้อย 30 วัน</p>
+
+<h2>9. ติดต่อเรา</h2>
+<p>สอบถามเพิ่มเติม:</p>
+<ul>
+<li>📧 อีเมล: <a href="mailto:keatikoon@gmail.com">keatikoon@gmail.com</a></li>
+<li>💬 LINE OA: <a href="https://line.me/R/ti/p/%40616zqqyz" target="_blank">@616zqqyz</a></li>
+</ul>
+
+<div class="box" style="margin-top:30px">
+การคลิก "ยอมรับ" และใช้บริการ ถือว่าท่านอ่านและเข้าใจนโยบายนี้แล้ว
+</div>
+</div>
+</body>
+</html>

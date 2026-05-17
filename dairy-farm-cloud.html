@@ -55,6 +55,13 @@ body.dark .badge.gray{background:#334155;color:#cbd5e1}
 body.dark .photo-thumb,body.dark .photo-card .photo-placeholder,body.dark .cow-card .photo-placeholder{background:#334155}
 body.dark .photo-upload{border-color:var(--border)}
 body.dark .photo-upload:hover{background:#1e293b}
+/* Plan expire banner */
+.plan-banner{padding:10px 16px;border-radius:10px;margin:8px 16px 0;font-size:14px;cursor:pointer;text-align:center;transition:transform .15s;animation:slideDown .3s ease-out}
+.plan-banner:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.plan-banner.warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.plan-banner.urgent{background:#fed7aa;color:#9a3412;border:1px solid #fb923c;animation:slideDown .3s ease-out, pulse 2s infinite}
+.plan-banner.critical{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:600;animation:slideDown .3s ease-out, pulse 2s infinite}
+@keyframes slideDown{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}
 /* Dark mode: input text สีอ่อน (แก้ปัญหาพิมพ์แล้วมองไม่เห็นเพราะ default ดำ) */
 body.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="color"]):not([type="range"]):not([type="file"]),
 body.dark select,
@@ -678,7 +685,7 @@ function startAuthListener(){
   });
 }
 
-async function signUp(email, password, farmName){
+async function signUp(email, password, farmName, extra){
   const cred = await window.cloud.createUserWithEmailAndPassword(window.cloud.auth, email, password);
   if(farmName) await window.cloud.updateProfile(cred.user, {displayName: farmName});
   // สร้าง user document พร้อม trial 14 วัน
@@ -687,7 +694,11 @@ async function signUp(email, password, farmName){
   await window.cloud.setDoc(window.cloud.doc(window.cloud.db, 'users', cred.user.uid), {
     uid: cred.user.uid, email, displayName: farmName||'',
     plan: 'trial', trialEndsAt: trialEnds.toISOString(),
-    createdAt: new Date().toISOString(), farmName: farmName||'ฟาร์มของฉัน'
+    createdAt: new Date().toISOString(), farmName: farmName||'ฟาร์มของฉัน',
+    ownerName: extra?.name || '',
+    phone: extra?.phone || '',
+    agreedTerms: true,
+    agreedAt: new Date().toISOString()
   });
   return cred.user;
 }
@@ -1017,6 +1028,7 @@ function renderLanding(){
 
 function renderSignupPage(){
   const app = $('app');
+  const inp = 'style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;margin-top:4px;margin-bottom:10px"';
   app.innerHTML = `
     <div class="login-wrap">
       <div class="login-box">
@@ -1024,12 +1036,18 @@ function renderSignupPage(){
         <div class="login-title">สมัครใช้ฟรี 14 วัน</div>
         <div class="login-sub">ไม่ต้องใช้บัตรเครดิต · ใช้ได้เต็มทุกฟีเจอร์</div>
         <div class="login-err" id="signupErr"></div>
-        <div class="field"><label>ชื่อฟาร์มของคุณ</label><input id="su_farm" placeholder="เช่น ฟาร์มจรูญทรัพย์" style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;margin-top:4px;margin-bottom:10px"></div>
-        <div class="field"><label>อีเมล</label><input type="email" id="su_email" placeholder="you@email.com" style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;margin-top:4px;margin-bottom:10px"></div>
-        <div class="field"><label>รหัสผ่าน (อย่างน้อย 6 ตัว)</label><input type="password" id="su_pass" placeholder="••••••" style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;margin-top:4px;margin-bottom:14px"></div>
+        <div class="field"><label>ชื่อฟาร์มของคุณ *</label><input id="su_farm" placeholder="เช่น ฟาร์มจรูญทรัพย์" ${inp}></div>
+        <div class="field"><label>ชื่อ-นามสกุล *</label><input id="su_name" placeholder="ชื่อจริง นามสกุล" ${inp}></div>
+        <div class="field"><label>เบอร์โทร *</label><input type="tel" id="su_phone" inputmode="numeric" placeholder="0812345678" maxlength="10" ${inp}></div>
+        <div class="field"><label>อีเมล *</label><input type="email" id="su_email" placeholder="you@email.com" ${inp}></div>
+        <div class="field"><label>รหัสผ่าน (อย่างน้อย 6 ตัว) *</label><input type="password" id="su_pass" placeholder="••••••" style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;margin-top:4px;margin-bottom:10px"></div>
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#6b7280;margin-bottom:14px;cursor:pointer">
+          <input type="checkbox" id="su_agree" style="margin-top:3px;flex-shrink:0">
+          <span>ยอมรับ <a href="terms.html" target="_blank" style="color:#16a34a;text-decoration:underline">ข้อตกลงการใช้งาน</a> และ <a href="privacy.html" target="_blank" style="color:#16a34a;text-decoration:underline">นโยบายความเป็นส่วนตัว</a></span>
+        </label>
         <button class="btn-login" onclick="doSignup()">🚀 เริ่มใช้ฟรี</button>
         <div style="text-align:center;margin:14px 0;color:#9ca3af;font-size:12px">หรือ</div>
-        <button class="btn btn-sec" style="width:100%;padding:13px;font-size:14px" onclick="doGoogleSignIn()">🔵 สมัครด้วย Google</button>
+        <button class="btn btn-sec" style="width:100%;padding:13px;font-size:14px" onclick="doGoogleSignIn(true)">🔵 สมัครด้วย Google</button>
         <div class="login-hint" style="margin-top:14px">
           มีบัญชีแล้ว? <a href="#" onclick="event.preventDefault();renderLoginPage()" style="color:#16a34a;font-weight:600">เข้าสู่ระบบ</a> · <a href="#" onclick="event.preventDefault();renderLanding()" style="color:#16a34a">กลับหน้าแรก</a>
         </div>
@@ -1061,13 +1079,19 @@ function renderLoginPage(){
 
 async function doSignup(){
   const farm = $('su_farm').value.trim();
+  const name = $('su_name').value.trim();
+  const phone = ($('su_phone').value||'').replace(/[^0-9]/g,'');
   const email = $('su_email').value.trim();
   const pass = $('su_pass').value;
+  const agreed = $('su_agree')?.checked;
   const err = $('signupErr');
-  if(!farm||!email||!pass){ err.textContent='กรอกข้อมูลให้ครบ'; err.classList.add('show'); return; }
+  err.classList.remove('show');
+  if(!farm||!name||!phone||!email||!pass){ err.textContent='กรอกข้อมูลให้ครบทุกช่อง'; err.classList.add('show'); return; }
+  if(!/^0[0-9]{8,9}$/.test(phone)){ err.textContent='เบอร์โทรไม่ถูกต้อง (ขึ้นต้น 0 และ 9-10 หลัก)'; err.classList.add('show'); return; }
   if(pass.length<6){ err.textContent='รหัสผ่านอย่างน้อย 6 ตัว'; err.classList.add('show'); return; }
+  if(!agreed){ err.textContent='กรุณายอมรับข้อตกลงและนโยบายความเป็นส่วนตัว'; err.classList.add('show'); return; }
   try{
-    await signUp(email, pass, farm);
+    await signUp(email, pass, farm, {name, phone});
     // onAuthStateChanged จะ trigger เอง
   }catch(e){
     err.textContent = e.code==='auth/email-already-in-use'?'อีเมลนี้มีบัญชีแล้ว — เข้าสู่ระบบแทน':e.message;
@@ -1254,6 +1278,66 @@ function showPayment(plan){
     </div>`;
 }
 
+async function saveAdminNotify(){
+  if(!isAdmin) return alert('ไม่มีสิทธิ์');
+  const cfg = {
+    telegramToken: $('ac_tgToken').value.trim(),
+    telegramChatId: $('ac_tgChat').value.trim(),
+    lineToken: $('ac_lineToken').value.trim(),
+    lineUserId: $('ac_lineUser').value.trim(),
+    updatedAt: new Date().toISOString()
+  };
+  try{
+    await window.cloud.setDoc(window.cloud.doc(window.cloud.db, 'admin_config', 'notify'), cfg);
+    alert('✅ บันทึกแล้ว — กดปุ่ม "ส่งทดสอบ" เพื่อตรวจสอบ');
+  }catch(e){ alert('Error: '+e.message); }
+}
+
+async function testAdminNotify(){
+  if(!isAdmin) return;
+  const payload = {
+    uid:'TEST', email:'test@admin.com',
+    plan:'pro', amount: 990, durationDays: 30,
+    note:'ทดสอบการแจ้งเตือนของ admin',
+    requestedAt: new Date().toISOString()
+  };
+  await notifyAdminNewPayment(payload);
+  alert('✅ ส่งทดสอบแล้ว — ตรวจ Telegram/LINE ของคุณ');
+}
+
+// แจ้งเตือน admin (Parke) ทาง Telegram/LINE เมื่อมี payment ใหม่
+// ตั้งค่า ADMIN_NOTIFY ใน Firestore: ดูที่ collection "admin_config" doc "notify"
+// {telegramToken, telegramChatId, lineToken, lineUserId}
+async function notifyAdminNewPayment(payDoc){
+  try{
+    const cfgRef = window.cloud.doc(window.cloud.db, 'admin_config', 'notify');
+    const snap = await window.cloud.getDoc(cfgRef);
+    if(!snap.exists()) return;
+    const cfg = snap.data();
+    const planName = PLANS[payDoc.plan]?.name || payDoc.plan;
+    const msg = `💳 *Payment ใหม่!*\n\n` +
+      `📧 ${payDoc.email}\n` +
+      `📋 แผน: ${planName} (${payDoc.durationDays} วัน)\n` +
+      `💰 ฿${payDoc.amount}\n` +
+      (payDoc.note?`📝 ${payDoc.note}\n`:'') +
+      `\n🔗 farmmeth.com/?admin=1 → ยืนยัน`;
+    // Telegram
+    if(cfg.telegramToken && cfg.telegramChatId){
+      fetch(`https://api.telegram.org/bot${cfg.telegramToken}/sendMessage`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({chat_id: cfg.telegramChatId, text: msg, parse_mode:'Markdown'})
+      }).catch(()=>{});
+    }
+    // LINE (ผ่าน Cloudflare Worker)
+    if(cfg.lineToken && cfg.lineUserId){
+      fetch('https://farmmeth-line-proxy.keatikoon.workers.dev/', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({token: cfg.lineToken, to: cfg.lineUserId, text: msg.replace(/\*/g,'')})
+      }).catch(()=>{});
+    }
+  }catch(e){ console.warn('notifyAdminNewPayment:', e); }
+}
+
 async function submitPayment(plan){
   const file = $('slipFile').files[0];
   const note = $('payNote').value;
@@ -1276,6 +1360,8 @@ async function submitPayment(plan){
       requestedAt: new Date().toISOString()
     };
     await window.cloud.addDoc(window.cloud.collection(window.cloud.db, 'payments'), payDoc);
+    // แจ้งเตือน admin ผ่าน Telegram/LINE (Cloudflare Worker)
+    notifyAdminNewPayment(payDoc).catch(()=>{}); // ทำ background ไม่ block UI
     alert('✅ ส่งหลักฐานเรียบร้อย!\n\nAdmin จะตรวจสอบและยืนยันภายใน 24 ชม.\nคุณจะใช้งานต่อได้หลังยืนยัน');
     renderInternalLogin();
   }catch(e){
@@ -1314,6 +1400,13 @@ async function showAdminPage(){
     const pendingPays = payments.filter(p=>p.status==='pending');
     const totalRevenue = payments.filter(p=>p.status==='approved').reduce((s,p)=>s+(+p.amount||0),0);
 
+    // โหลด admin notify config
+    let notifyCfg = {};
+    try{
+      const ns = await window.cloud.getDoc(window.cloud.doc(window.cloud.db, 'admin_config', 'notify'));
+      if(ns.exists()) notifyCfg = ns.data();
+    }catch(e){}
+
     $('adminContent').innerHTML = `
       <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
         <div class="stat blue"><div class="stat-label">Total Users</div><div class="stat-value">${totalUsers}</div></div>
@@ -1321,6 +1414,21 @@ async function showAdminPage(){
         <div class="stat amber"><div class="stat-label">Paid Users</div><div class="stat-value">${paidUsers}</div></div>
         <div class="stat purple"><div class="stat-label">Revenue (รวม)</div><div class="stat-value">฿${totalRevenue.toLocaleString()}</div></div>
       </div>
+
+      <details style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:20px">
+        <summary style="cursor:pointer;font-weight:600;font-size:14px;color:#1f2937">🔔 ตั้งค่าแจ้งเตือนเมื่อมี Payment ใหม่</summary>
+        <p class="muted" style="font-size:12px;margin:8px 0">เมื่อมีลูกค้าส่งสลิปจ่ายเงินใหม่ ระบบจะส่ง notify เข้า Telegram/LINE ของ admin (Parke) อัตโนมัติ</p>
+        <div class="form-grid">
+          <div class="field"><label>Telegram Bot Token</label><input type="text" id="ac_tgToken" value="${notifyCfg.telegramToken||''}" placeholder="1234567890:AAA..."></div>
+          <div class="field"><label>Telegram Chat ID</label><input type="text" id="ac_tgChat" value="${notifyCfg.telegramChatId||''}" placeholder="-100xxxxx"></div>
+          <div class="field"><label>LINE Channel Access Token</label><input type="text" id="ac_lineToken" value="${notifyCfg.lineToken||''}"></div>
+          <div class="field"><label>LINE User ID</label><input type="text" id="ac_lineUser" value="${notifyCfg.lineUserId||''}" placeholder="U..."></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="saveAdminNotify()">💾 บันทึก</button>
+          <button class="btn btn-sec btn-sm" onclick="testAdminNotify()">🧪 ส่งทดสอบ</button>
+        </div>
+      </details>
 
       <h3 style="margin:14px 0;font-size:16px">💳 รอตรวจสอบ (${pendingPays.length})</h3>
       <div class="table-wrap"><table>
@@ -1572,6 +1680,31 @@ async function enterApp(){
   showPage((savedPage && allowedPages.includes(savedPage)) ? savedPage : defaultPage);
 }
 
+// Banner เตือนเมื่อ plan ใกล้หมดอายุ (เฉพาะ Owner)
+function renderPlanBanner(){
+  if(!authUser || !userPlan) return '';
+  if(currentUser?.role !== 'owner') return ''; // staff ไม่ต้องเห็น banner ต่ออายุ
+  const days = daysLeft();
+  const planName = PLANS[userPlan.plan]?.name || userPlan.plan;
+  const isTrial = userPlan.plan === 'trial';
+  if(planExpired()){
+    return `<div class="plan-banner critical" onclick="showPricingPage()">
+      ⛔ <b>${isTrial?'ทดลองหมดอายุแล้ว':'แผน '+planName+' หมดอายุ'}</b> — คลิกเพื่อต่ออายุ
+    </div>`;
+  }
+  if(days <= 3){
+    return `<div class="plan-banner urgent" onclick="showPricingPage()">
+      ⏰ <b>${isTrial?'เหลือทดลองอีก':'แผน '+planName+' เหลือ'} ${days} วัน</b> — กดที่นี่เพื่อต่ออายุ
+    </div>`;
+  }
+  if(days <= 7){
+    return `<div class="plan-banner warn" onclick="showPricingPage()">
+      ⚠️ ${isTrial?'ทดลองเหลือ':'แผน '+planName+' เหลือ'} ${days} วัน — <u>ต่ออายุก่อนหมด</u>
+    </div>`;
+  }
+  return '';
+}
+
 function renderShell(){
   const isOwner = currentUser.role==='owner';
   const ownerMenu = [
@@ -1648,6 +1781,7 @@ function renderShell(){
       </div>
       <div class="main">
         <button class="menu-toggle no-print" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        ${renderPlanBanner()}
         <div id="pageContent"></div>
       </div>
     </div>

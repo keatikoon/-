@@ -1,0 +1,48 @@
+// =============================================================
+// Firestore Security Rules — Dairy Farm App
+// คัดลอกทั้งหมดนี้ไปวางที่ Firebase Console
+//   > Firestore Database > Rules > Publish
+// =============================================================
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // farms — ข้อมูลฟาร์ม (ใช้ Farm ID = UID ของเจ้าของ)
+    match /farms/{farmId} {
+      allow read: if true;
+      allow write: if request.resource.size() < 800 * 1024;
+    }
+
+    // users — ข้อมูล plan ของแต่ละ user (Firebase Auth)
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // payments — ลูกค้าส่งสลิป + admin อนุมัติ
+    match /payments/{paymentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+    }
+
+    // admin_config — ตั้งค่าผู้ดูแลระบบ (Telegram/LINE notify)
+    match /admin_config/{document} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ปิดทุกอย่างที่ไม่ตรงเงื่อนไข
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// หมายเหตุความปลอดภัย:
+// - Rules ข้างต้นให้ใครก็ตามที่รู้ Farm ID อ่าน/เขียนได้
+//   เพราะแอปนี้ใช้ PIN ภายในแอปเป็นการยืนยันตัวตน
+// - หากต้องการความปลอดภัยสูงขึ้น ให้เปิด Firebase Authentication
+//   แล้วเพิ่ม `request.auth != null` ใน rules
+// - ทุกครั้งที่แก้ไข rules ต้องกด "Publish" ใน Firebase Console
