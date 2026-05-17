@@ -213,6 +213,30 @@ tr:hover td{background:#f9fafb}
 .badge.gray{background:#f3f4f6;color:#374151}
 .badge.purple{background:#ede9fe;color:#6b21a8}
 
+/* Tutorial */
+.tut-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:99998;display:none;align-items:center;justify-content:center;padding:20px;animation:tutFade .25s ease-out}
+.tut-bg.show{display:flex}
+@keyframes tutFade{from{opacity:0}to{opacity:1}}
+.tut-card{background:#fff;border-radius:20px;max-width:520px;width:100%;padding:32px 28px 24px;box-shadow:0 25px 60px rgba(0,0,0,.4);text-align:center;animation:tutPop .3s ease-out;max-height:90vh;overflow-y:auto}
+@keyframes tutPop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+.tut-icon{font-size:64px;margin-bottom:8px;line-height:1}
+.tut-title{font-size:22px;font-weight:800;color:#111827;margin-bottom:8px}
+.tut-desc{font-size:15px;color:#4b5563;line-height:1.7;margin-bottom:18px;text-align:left}
+.tut-desc b{color:#15803d}
+.tut-hint{background:#fef3c7;color:#92400e;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;text-align:left}
+.tut-progress{display:flex;gap:4px;justify-content:center;margin-bottom:16px}
+.tut-dot{width:24px;height:4px;background:#e5e7eb;border-radius:2px;transition:all .2s}
+.tut-dot.active{background:#16a34a;width:32px}
+.tut-dot.done{background:#86efac}
+.tut-foot{display:flex;gap:8px;justify-content:space-between;align-items:center}
+.tut-foot .left{display:flex;gap:8px}
+.tut-btn{padding:10px 18px;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600}
+.tut-btn-sec{background:#f3f4f6;color:#374151}
+.tut-btn-sec:hover{background:#e5e7eb}
+.tut-btn-pri{background:#16a34a;color:#fff}
+.tut-btn-pri:hover{background:#15803d}
+.tut-btn-skip{background:transparent;color:#9ca3af;text-decoration:underline}
+
 /* Cow filter chips */
 .cow-filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .cow-filter-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:2px solid #e5e7eb;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;color:#374151;transition:all .15s}
@@ -1863,6 +1887,8 @@ async function enterApp(){
   setTimeout(()=>{ try{ checkAutoBackup(); }catch(e){console.error(e);} }, 10000);
   // Auto-open cow profile ถ้ามาจาก ?cow= URL
   _checkPendingCow();
+  // ทัวร์สอนใช้งาน ครั้งแรก
+  maybeAutoStartTutorial();
 }
 
 // Banner เตือนเมื่อ plan ใกล้หมดอายุ (เฉพาะ Owner)
@@ -2204,6 +2230,7 @@ function renderDash(){
     <div class="page-head">
       <div class="page-title">📊 แดชบอร์ด</div>
       <div class="page-actions">
+        <button class="btn btn-sec" onclick="startTutorial()" title="ทัวร์สอนใช้งาน">📖 สอนใช้งาน</button>
         <button class="btn btn-sec" onclick="toggleDark()" title="สลับโหมดมืด/สว่าง">${document.body.classList.contains('dark')?'☀️':'🌙'}</button>
         <button class="btn btn-sec" onclick="showPage('alerts')">🔔 แจ้งเตือน (${countAlerts()})</button>
         ${DB.settings.telegramBotToken ? '<button class="btn btn-sec" onclick="sendDailyNow()">📤 ส่ง Telegram</button>' : ''}
@@ -3523,6 +3550,154 @@ function runRemindersCheck(silent){
       sendLine(msg).catch(()=>{});
     }
   }
+}
+
+// ============== Interactive Tutorial (ทัวร์สอนใช้งาน) ==============
+const TUTORIAL_STEPS = [
+  {
+    icon: '👋',
+    title: 'ยินดีต้อนรับสู่ FarmMeth!',
+    desc: 'ระบบจัดการฟาร์มวัวนมครบวงจร — บันทึกน้ำนม, สุขภาพ, ค่าใช้จ่าย, ออก Invoice, ดูกำไรรายตัววัว ทั้งหมดในที่เดียว<br><br>ทัวร์นี้ใช้เวลาประมาณ <b>2 นาที</b> เรียนรู้ฟีเจอร์หลัก',
+    hint: '💡 กดปุ่ม "ถัดไป" เพื่อเริ่ม หรือกด "ข้าม" ถ้าอยากใช้งานเลย'
+  },
+  {
+    icon: '🐄',
+    title: 'ขั้นที่ 1: เพิ่มวัวในฟาร์ม',
+    desc: 'ไปเมนู <b>"วัวในฟาร์ม"</b> ทางซ้าย → กดปุ่ม <b>"➕ เพิ่มวัว"</b><br><br>กรอกข้อมูล: รหัสวัว, ชื่อ, สายพันธุ์, วันเกิด, สถานะ (กำลังให้นม / ตั้งท้อง / ฯลฯ) และ <b>วันคลอดล่าสุด</b> (สำคัญ — ใช้คำนวณ Lactation Curve)<br><br>ถ่ายรูปวัวแนบได้ด้วย!',
+    hint: '💡 ตั้งรหัสวัวเป็นแบบเรียงลำดับ เช่น C001, C002 จะดูง่ายในตาราง',
+    action: { page: 'cows', label: '🐄 ไปหน้าวัวเลย' }
+  },
+  {
+    icon: '🥛',
+    title: 'ขั้นที่ 2: บันทึกน้ำนมรายวัน',
+    desc: 'เมนู <b>"บันทึกน้ำนม"</b> สำหรับเช้า/เย็น ทุกตัว<br><br>หรือใช้ <b>"บันทึกรีดนม"</b> (สำหรับพนักงาน) — กดทีเดียวกรอกหลายตัวพร้อมกัน เร็วกว่าเยอะ',
+    hint: '💡 ถ้าบันทึกครบทุกตัวรอบเย็น → ระบบส่งสรุปเข้า Telegram/LINE ให้อัตโนมัติ',
+    action: { page: 'milkQuick', label: '🥛 บันทึกรีดนม' }
+  },
+  {
+    icon: '💉',
+    title: 'ขั้นที่ 3: ตารางวัคซีนมาตรฐาน',
+    desc: 'เมนู <b>"สุขภาพ/วัคซีน"</b> → กดปุ่ม <b>"📋 ตารางวัคซีนมาตรฐาน"</b><br><br>เลือกวัคซีน (FMD, LSD, Brucellosis, ถ่ายพยาธิ ฯลฯ) + เลือกวัว → ระบบสร้างบันทึกทั้งปีให้อัตโนมัติพร้อมเตือนเมื่อใกล้ครบกำหนด',
+    hint: '✨ ฟาร์มมือใหม่ใช้บ่อย — ไม่ต้องจำตารางวัคซีนเอง',
+    action: { page: 'health', label: '💉 ไปจัดการวัคซีน' }
+  },
+  {
+    icon: '🧾',
+    title: 'ขั้นที่ 4: ขายน้ำนม + ออก Invoice',
+    desc: 'เมนู <b>"ขายน้ำนม/Invoice"</b> → เพิ่มลูกค้า (สหกรณ์/โรงงาน) → บันทึกขาย → กดปุ่ม <b>🖨️ Invoice</b> พิมพ์ใบเสร็จ A4 ได้ทันที<br><br>มี Customer Statement สรุปยอดเป็นรายเดือนให้ลูกค้าด้วย',
+    hint: '💼 ใส่ที่อยู่ฟาร์ม + เบอร์โทรใน Settings ก่อน เพื่อขึ้นบน Invoice',
+    action: { page: 'sales', label: '🧾 ไปบันทึกขาย' }
+  },
+  {
+    icon: '📊',
+    title: 'ขั้นที่ 5: ดูแดชบอร์ดสรุป + กำไรรายตัววัว',
+    desc: '<b>แดชบอร์ด</b> = สรุปสด: น้ำนม, รายรับ-รายจ่าย, กำไรสุทธิ, ต้นทุนต่อลิตร, กราฟ 30 วันล่าสุด<br><br>เมนู <b>"รายงาน & กำไร"</b> มีตาราง <b>กำไรรายตัววัว</b> (🥇🥈🥉) — เห็นเลยว่าวัวตัวไหนกำไร/ขาดทุน',
+    hint: '📈 หน้าโปรไฟล์วัว → Tab "น้ำนม" → จะเห็น Lactation Curve เทียบกับมาตรฐาน',
+    action: { page: 'reports', label: '📈 ดูรายงาน' }
+  },
+  {
+    icon: '👷',
+    title: 'ขั้นที่ 6: สร้าง user ให้พนักงาน',
+    desc: 'เมนู <b>"รายชื่อพนักงาน"</b> → เพิ่มพนักงาน → ตั้ง username + password + <b>ติ๊กสิทธิ์</b> ว่าให้เห็นเมนูไหนบ้าง<br><br>แชร์ลิงก์ <code>farmmeth.com/?farm=...</code> ให้พนักงาน → เข้าใช้งานได้เลย ไม่ต้องสมัคร',
+    hint: '🔒 พนักงานเห็นเฉพาะเมนูที่ owner ติ๊ก — financial pages (รายรับ-จ่าย) ถูกซ่อนเสมอ',
+    action: { page: 'employees', label: '👷 จัดการพนักงาน' }
+  },
+  {
+    icon: '🏷️',
+    title: 'ขั้นที่ 7: QR Code ติดวัว',
+    desc: 'หน้า <b>วัวในฟาร์ม</b> → ปุ่ม <b>"🏷️ พิมพ์ QR ทุกตัว"</b> → ได้แผ่น A4 มี QR ทุกตัว<br><br>พิมพ์ติดที่หูวัว/คอก → พนักงานสแกนด้วยมือถือ → เปิดประวัติวัวทันที',
+    hint: '📱 ใช้งานง่ายมาก — ไม่ต้องจำรหัสวัว สแกนเอา',
+    action: { page: 'cows', label: '🏷️ ไปสร้าง QR' }
+  },
+  {
+    icon: '☁️',
+    title: 'ขั้นที่ 8: ตั้งค่าแจ้งเตือน + Auto-Backup',
+    desc: 'เมนู <b>"ตั้งค่า"</b> → ตั้งค่า:<br>• <b>Telegram + LINE</b> ส่งสรุปยอดรายวันอัตโนมัติ<br>• <b>Auto-Backup รายสัปดาห์</b> — ส่งไฟล์ Excel ทั้งฟาร์มเข้า Telegram ทุก 7 วัน<br>• <b>Cloudinary</b> เก็บรูปวัวคุณภาพสูง (ฟรี 25GB)<br>• <b>ภาษา</b> ไทย/อังกฤษ/ลาว/เขมร',
+    hint: '⚙️ ตั้งครั้งเดียว ใช้ได้ตลอด',
+    action: { page: 'settings', label: '⚙️ ไปตั้งค่า' }
+  },
+  {
+    icon: '🎉',
+    title: 'พร้อมเริ่มใช้งานแล้ว!',
+    desc: '✅ เพิ่มวัวตัวแรก<br>✅ บันทึกน้ำนม<br>✅ ดูแดชบอร์ด<br><br>มีปัญหา/อยากเสนอฟีเจอร์ → กดปุ่ม <b>"💬 ติดต่อทีมงาน LINE"</b> ที่ Sidebar ทางซ้าย',
+    hint: '🚀 ขอให้สนุกกับการจัดการฟาร์ม!'
+  }
+];
+
+let _tutStep = 0;
+
+function startTutorial(){
+  _tutStep = 0;
+  let bg = document.getElementById('tutorialBg');
+  if(!bg){
+    bg = document.createElement('div');
+    bg.id = 'tutorialBg';
+    bg.className = 'tut-bg';
+    document.body.appendChild(bg);
+  }
+  renderTutorialStep();
+  bg.classList.add('show');
+}
+
+function renderTutorialStep(){
+  const s = TUTORIAL_STEPS[_tutStep];
+  if(!s){ closeTutorial(true); return; }
+  const total = TUTORIAL_STEPS.length;
+  const dots = TUTORIAL_STEPS.map((_,i)=>`<div class="tut-dot ${i===_tutStep?'active':i<_tutStep?'done':''}"></div>`).join('');
+  const bg = document.getElementById('tutorialBg');
+  bg.innerHTML = `
+    <div class="tut-card">
+      <div class="tut-icon">${s.icon}</div>
+      <div class="tut-title">${s.title}</div>
+      <div class="tut-progress">${dots}</div>
+      <div class="tut-desc">${s.desc}</div>
+      ${s.hint?`<div class="tut-hint">${s.hint}</div>`:''}
+      <div class="tut-foot">
+        <div class="left">
+          ${_tutStep>0?'<button class="tut-btn tut-btn-sec" onclick="tutPrev()">← ก่อนหน้า</button>':''}
+          <button class="tut-btn tut-btn-skip" onclick="closeTutorial(true)">${_tutStep===total-1?'ปิด':'ข้าม'}</button>
+        </div>
+        <div>
+          ${s.action?`<button class="tut-btn tut-btn-sec" onclick="tutGoTo('${s.action.page}')">${s.action.label}</button>`:''}
+          <button class="tut-btn tut-btn-pri" onclick="tutNext()">${_tutStep===total-1?'✅ เริ่มใช้งาน':'ถัดไป →'}</button>
+        </div>
+      </div>
+      <div style="margin-top:14px;font-size:11px;color:#9ca3af">${_tutStep+1} / ${total}</div>
+    </div>`;
+}
+
+function tutNext(){
+  _tutStep++;
+  if(_tutStep >= TUTORIAL_STEPS.length){ closeTutorial(true); return; }
+  renderTutorialStep();
+}
+
+function tutPrev(){
+  _tutStep = Math.max(0, _tutStep-1);
+  renderTutorialStep();
+}
+
+function tutGoTo(page){
+  closeTutorial(true);
+  setTimeout(()=>showPage(page), 100);
+}
+
+function closeTutorial(markComplete){
+  const bg = document.getElementById('tutorialBg');
+  if(bg) bg.classList.remove('show');
+  if(markComplete){
+    try{ localStorage.setItem('dairy-tutorial-done','1'); }catch(e){}
+  }
+}
+
+// Auto-show tutorial ครั้งแรก (เฉพาะ owner + ยังไม่เคยดู)
+function maybeAutoStartTutorial(){
+  try{
+    if(currentUser?.role !== 'owner') return;
+    if(localStorage.getItem('dairy-tutorial-done')) return;
+    // รอ 3 วินาทีให้แอพโหลดเสร็จก่อน
+    setTimeout(()=>{ if(currentPage==='dashboard') startTutorial(); }, 3000);
+  }catch(e){}
 }
 
 // ============== Toast Notification ==============
