@@ -1328,6 +1328,19 @@ async function doForgotPassword(){
 }
 
 // ============== PLAN LIMITS CHECK ==============
+// Helper: เช็คก่อนสร้าง record ใหม่ — block เฉพาะตอน plan หมดอายุ (เปลี่ยน record เก่ายังทำได้)
+function canCreateRecord(){
+  if(!userPlan) return true; // ไม่มี plan = ยังไม่ load, ปล่อยผ่าน
+  if(userPlan.plan === 'enterprise') return true;
+  if(currentUser?.role !== 'owner') return true; // staff ไม่ block (owner เป็นคนจ่าย)
+  if(planExpired()){
+    showToast('⚠️ แผนหมดอายุ — ต่ออายุก่อนเพิ่มข้อมูลใหม่','error',5000);
+    setTimeout(()=>showPricingPage(), 800);
+    return false;
+  }
+  return true;
+}
+
 function checkPlanLimit(type){
   if(!userPlan) return true;
   if(userPlan.plan === 'enterprise') return true;
@@ -1675,12 +1688,24 @@ async function approvePayment(paymentId, userUid, plan, days){
     const userRef = window.cloud.doc(window.cloud.db, 'users', userUid);
     const userSnap = await window.cloud.getDoc(userRef);
     let paidUntil = new Date();
+    let finalPlan = plan;
     if(userSnap.exists()){
       const u = userSnap.data();
       if(u.paidUntil && new Date(u.paidUntil)>paidUntil) paidUntil = new Date(u.paidUntil);
+      // กัน downgrade — ถ้า user มี plan ที่สูงกว่าอยู่แล้ว ไม่ลดระดับ
+      const planRank = {trial:0, basic:1, pro:2, enterprise:3};
+      const currentRank = planRank[u.plan] ?? 0;
+      const newRank = planRank[plan] ?? 0;
+      if(currentRank > newRank){
+        if(!confirm(`⚠️ User มีแผน ${u.plan} อยู่แล้ว (สูงกว่า ${plan})\n\nต้องการ keep แผน ${u.plan} + ต่ออายุไหม? (Yes = keep, No = ลดเป็น ${plan})`)){
+          finalPlan = plan; // confirm No → downgrade ตามที่ admin เลือก
+        } else {
+          finalPlan = u.plan; // keep แผนเดิม
+        }
+      }
     }
     paidUntil.setDate(paidUntil.getDate() + (+days||30));
-    await window.cloud.updateDoc(userRef, {plan, paidUntil: paidUntil.toISOString()});
+    await window.cloud.updateDoc(userRef, {plan: finalPlan, paidUntil: paidUntil.toISOString()});
     // อัพเดท payment status
     await window.cloud.updateDoc(window.cloud.doc(window.cloud.db, 'payments', paymentId), {
       status:'approved', approvedAt: new Date().toISOString(), approvedBy: authUser.email
@@ -3409,6 +3434,7 @@ function openMilk(id){
 }
 
 function saveMilk(id){
+  if(!id && !canCreateRecord()) return;
   const data = {
     date:$('f_date').value, cowId:$('f_cowId').value, session:$('f_session').value,
     amount:+$('f_amt').value||0, fat:+$('f_fat').value||null, protein:+$('f_pro').value||null,
@@ -4464,6 +4490,7 @@ function openFeed(id){
 }
 
 function saveFeed(id){
+  if(!id && !canCreateRecord()) return;
   const isOwner = currentUser.role==='owner';
   const data = {
     date:$('f_date').value, cowId:$('f_cowId').value, type:$('f_type').value,
@@ -4550,6 +4577,7 @@ function openHealth(id){
 }
 
 function saveHealth(id){
+  if(!id && !canCreateRecord()) return;
   const data = {
     date:$('f_date').value, cowId:$('f_cowId').value, type:$('f_type').value,
     detail:$('f_det').value, withdrawDays:+$('f_with').value||0,
@@ -4840,6 +4868,7 @@ function addDays(dateStr,days){
 }
 
 function saveBreed(id){
+  if(!id && !canCreateRecord()) return;
   const data = {
     date:$('f_date').value, cowId:$('f_cowId').value, method:$('f_method').value,
     sire:$('f_sire').value, expected:$('f_exp').value, result:$('f_res').value,
@@ -4911,6 +4940,7 @@ function openGrass(id){
 }
 
 function saveGrass(id){
+  if(!id && !canCreateRecord()) return;
   const data = {
     date:$('f_date').value, plot:$('f_plot').value, grassType:$('f_grass').value,
     activity:$('f_act').value, qty:+$('f_qty').value||0, unit:$('f_unit').value,
@@ -4986,6 +5016,7 @@ function openInv(id){
 }
 
 function saveInv(id){
+  if(!id && !canCreateRecord()) return;
   const data = {
     name:$('f_name').value, type:$('f_type').value, qty:+$('f_qty').value||0,
     unit:$('f_unit').value, minStock:+$('f_min').value||0,
@@ -5080,6 +5111,7 @@ function openExp(id){
 }
 
 function saveExp(id){
+  if(!id && !canCreateRecord()) return;
   const data = {date:$('f_date').value, category:$('f_cat').value, amount:+$('f_amt').value||0, note:$('f_note').value, recordedBy:currentUser.name, photos:[...tempPhotos]};
   if(!data.amount){ alert('กรุณากรอกจำนวน'); return; }
   if(id){
@@ -5155,6 +5187,7 @@ function calcInc(){
 }
 
 function saveInc(id){
+  if(!id && !canCreateRecord()) return;
   const data = {date:$('f_date').value, type:$('f_type').value, qty:+$('f_qty').value||0, unit:$('f_unit').value, price:+$('f_price').value||0, amount:+$('f_amt').value||0, note:$('f_note').value, recordedBy:currentUser.name};
   if(!data.amount){ alert('กรุณากรอกจำนวน'); return; }
   if(id){
@@ -5310,6 +5343,7 @@ function generateInvoiceNo(){
 }
 
 function saveSale(id){
+  if(!id && !canCreateRecord()) return;
   const data = {
     invoiceNo: $('sf_no').value.trim(),
     date: $('sf_date').value,
@@ -7386,6 +7420,7 @@ function openWeight(id){
 }
 
 function saveWeight(id){
+  if(!id && !canCreateRecord()) return;
   const data = {date:$('f_date').value, cowId:$('f_cowId').value, kg:+$('f_kg').value||0, note:$('f_note').value, recordedBy:currentUser.name};
   if(!data.cowId||!data.kg){ alert('กรุณากรอกข้อมูลให้ครบ'); return; }
   if(id){ Object.assign(DB.weights.find(x=>x.id===id), data); }
@@ -7503,6 +7538,7 @@ function openHeat(id){
 }
 
 function saveHeat(id){
+  if(!id && !canCreateRecord()) return;
   const signs = Array.from(document.querySelectorAll('.heatSign:checked')).map(e=>e.value);
   const data = {date:$('f_date').value, cowId:$('f_cowId').value, signs, confidence:$('f_conf').value, note:$('f_note').value, recordedBy:currentUser.name};
   if(!data.cowId){ alert('กรุณาเลือกวัว'); return; }
@@ -7581,6 +7617,7 @@ function openEnv(id){
 }
 
 function saveEnv(id){
+  if(!id && !canCreateRecord()) return;
   const data = {date:$('f_date').value, time:$('f_time').value, temp:+$('f_temp').value||0, humidity:+$('f_hum').value||0, note:$('f_note').value, recordedBy:currentUser.name};
   if(!data.temp||!data.humidity){ alert('กรุณากรอกอุณหภูมิและความชื้น'); return; }
   if(id){ Object.assign(DB.env.find(x=>x.id===id), data); }
