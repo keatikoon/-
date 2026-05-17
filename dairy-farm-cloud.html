@@ -2226,7 +2226,31 @@ function renderDash(){
     ...DB.income.slice(-5).map(i=>({d:i.date,t:'รายรับ',x:i.type+' '+money(i.amount)}))
   ].sort((a,b)=>b.d.localeCompare(a.d)).slice(0,10);
 
+  // แสดงปุ่ม "Demo Data" ถ้าฟาร์มยังเปล่า
+  const isEmpty = currentUser.role==='owner' && DB.cows.length===0;
+  const hasDemo = DB.cows.some(c=>c.isDemo);
+
   $('pageContent').innerHTML = `
+    ${isEmpty && !hasDemo ? `<div class="card" style="background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-left:4px solid #16a34a;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="font-size:48px">🎁</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:18px;font-weight:700;color:#15803d">ฟาร์มของคุณยังเปล่า — อยากลองด้วยข้อมูลตัวอย่างไหม?</div>
+          <div style="font-size:13px;color:#374151;margin-top:4px">ใส่วัว 5 ตัว + บันทึกนม 14 วัน + Invoice + วัคซีน — เห็นภาพรวมก่อนเริ่มกรอกจริง</div>
+        </div>
+        <button class="btn btn-primary" onclick="loadDemoData()">🎁 ใส่ข้อมูลตัวอย่าง</button>
+      </div>
+    </div>` : ''}
+    ${hasDemo ? `<div class="card" style="background:#fef3c7;border-left:4px solid #f59e0b;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="font-size:32px">⚠️</div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:600;color:#92400e">โหมดข้อมูลตัวอย่าง — ข้อมูลที่เห็นไม่ใช่ของจริง</div>
+          <div style="font-size:12px;color:#78350f;margin-top:2px">ลบทิ้งก่อนใส่ข้อมูลฟาร์มจริง</div>
+        </div>
+        <button class="btn btn-danger" onclick="clearDemoData()">🗑️ ลบข้อมูลตัวอย่าง</button>
+      </div>
+    </div>` : ''}
     <div class="page-head">
       <div class="page-title">📊 แดชบอร์ด</div>
       <div class="page-actions">
@@ -2242,6 +2266,7 @@ function renderDash(){
       <div class="value">${money(milkValue)}</div>
       <div class="sub">${fmt(milkTotal)} ลิตร × ${money(DB.settings.milkPrice||0)}/ลิตร</div>
     </div>
+    ${renderWeatherWidget()}
     ${renderRemindersWidget()}
     <div class="stat-grid">
       <div class="stat blue">
@@ -2436,8 +2461,92 @@ function countAlerts(){
 // ================== COWS ==================
 let cowFilterStatus = 'all';
 let cowFilterSearch = '';
+let cowBulkMode = false;
+let cowBulkSelected = new Set();
 function setCowFilter(s){ cowFilterStatus = s; renderCows(); }
 function setCowSearch(v){ cowFilterSearch = (v||'').toLowerCase().trim(); renderCows(); }
+function toggleBulkMode(){ cowBulkMode = !cowBulkMode; cowBulkSelected.clear(); renderCows(); }
+function bulkToggleCow(id, event){
+  event.stopPropagation();
+  if(cowBulkSelected.has(id)) cowBulkSelected.delete(id); else cowBulkSelected.add(id);
+  renderCows();
+}
+function bulkSelectAll(){
+  const filtered = (cowFilterStatus==='all' ? DB.cows : DB.cows.filter(c=>c.status===cowFilterStatus));
+  filtered.forEach(c=>cowBulkSelected.add(c.id));
+  renderCows();
+}
+function bulkClearSelection(){ cowBulkSelected.clear(); renderCows(); }
+
+function bulkChangeStatus(){
+  if(!cowBulkSelected.size){ showToast('เลือกวัวก่อน','warn'); return; }
+  const statuses = [
+    {k:'lactating',l:'กำลังให้นม'},{k:'dry',l:'พักรีด'},{k:'pregnant',l:'ตั้งท้อง'},
+    {k:'heifer',l:'วัวสาว'},{k:'calf',l:'ลูกวัว'},{k:'sold',l:'ขาย/ออก'}
+  ];
+  openModal(`
+    <h3>🔄 เปลี่ยนสถานะ ${cowBulkSelected.size} ตัว</h3>
+    <p class="muted">เลือกสถานะใหม่:</p>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:14px 0">
+      ${statuses.map(s=>`<button class="btn btn-sec" onclick="bulkApplyStatus('${s.k}')" style="text-align:left;padding:12px">
+        <span class="badge ${statusColor(s.k)}">${s.l}</span>
+      </button>`).join('')}
+    </div>
+    <div class="modal-foot"><button class="btn btn-sec" onclick="closeModal()">ยกเลิก</button></div>`);
+}
+
+function bulkApplyStatus(newStatus){
+  let count = 0;
+  cowBulkSelected.forEach(id=>{
+    const c = DB.cows.find(x=>x.id===id);
+    if(c){ c.status = newStatus; count++; }
+  });
+  log('bulk-edit', `เปลี่ยนสถานะวัว ${count} ตัว → ${statusLabel(newStatus)}`);
+  save(); closeModal(); cowBulkSelected.clear();
+  showToast(`✅ เปลี่ยนสถานะวัว ${count} ตัวแล้ว`,'success');
+  refresh();
+}
+
+function bulkDelete(){
+  if(!cowBulkSelected.size){ showToast('เลือกวัวก่อน','warn'); return; }
+  if(!confirm(`ลบวัว ${cowBulkSelected.size} ตัวพร้อมกัน?\n(บันทึกที่เกี่ยวข้องจะยังอยู่)`)) return;
+  const count = cowBulkSelected.size;
+  DB.cows = DB.cows.filter(c=>!cowBulkSelected.has(c.id));
+  log('bulk-delete',`ลบวัว ${count} ตัว`);
+  cowBulkSelected.clear();
+  save();
+  showToast(`🗑️ ลบวัว ${count} ตัวแล้ว`,'success');
+  refresh();
+}
+
+function bulkPrintQR(){
+  if(!cowBulkSelected.size){ showToast('เลือกวัวก่อน','warn'); return; }
+  if(typeof qrcode === 'undefined'){ showToast('QR library ยังโหลดไม่เสร็จ','warn'); return; }
+  const cows = DB.cows.filter(c=>cowBulkSelected.has(c.id));
+  const items = cows.map(c=>`
+    <div class="qr-cell">
+      <div class="code">${c.code}</div>
+      <div class="name">${c.name||''}</div>
+      <div class="qr-img">${buildCowQRImg(c.id, 4)}</div>
+      <div class="farm">${(DB.settings.farmName||'ฟาร์ม').slice(0,20)}</div>
+    </div>
+  `).join('');
+  const win = window.open('','_blank','width=900,height=700');
+  win.document.write(`<!DOCTYPE html><html><head><title>QR ${cows.length} ตัว</title>
+    <style>@page{size:A4;margin:10mm}body{font-family:-apple-system,Sukhumvit Set,sans-serif;margin:0;padding:5mm}
+    h1{font-size:14pt;margin:0 0 6mm;text-align:center}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}
+    .qr-cell{border:1px dashed #999;padding:4mm;text-align:center;page-break-inside:avoid;border-radius:4mm}
+    .code{font-size:14pt;font-weight:800}.name{font-size:10pt;color:#444;min-height:14pt}
+    .qr-img img{width:35mm!important;height:35mm!important}.farm{font-size:7pt;color:#666;margin-top:2mm}
+    button{padding:10px 20px;cursor:pointer}@media print{button{display:none}}
+    </style></head><body>
+    <h1>🐄 QR Code ${cows.length} ตัว (${DB.settings.farmName||'ฟาร์ม'})</h1>
+    <div style="text-align:center;margin:6mm 0"><button onclick="window.print()">🖨️ พิมพ์</button></div>
+    <div class="grid">${items}</div>
+    </body></html>`);
+  win.document.close();
+}
 
 function renderCows(){
   const isOwner = currentUser.role==='owner';
@@ -2468,10 +2577,22 @@ function renderCows(){
     <div class="page-head">
       <div class="page-title">🐄 วัวในฟาร์ม (${filtered.length}${cowFilterStatus!=='all'||cowFilterSearch?` / ${DB.cows.length}`:''})</div>
       <div class="page-actions">
-        ${DB.cows.length ? '<button class="btn btn-sec" onclick="printAllCowQR()">🏷️ พิมพ์ QR ทุกตัว</button>' : ''}
-        <button class="btn btn-primary" onclick="openCow()">➕ เพิ่มวัว</button>
+        ${DB.cows.length ? `<button class="btn btn-sec ${cowBulkMode?'btn-primary':''}" onclick="toggleBulkMode()">${cowBulkMode?'❌ ออกจากโหมดเลือก':'☑️ เลือกหลายตัว'}</button>` : ''}
+        ${DB.cows.length && !cowBulkMode ? '<button class="btn btn-sec" onclick="printAllCowQR()">🏷️ พิมพ์ QR ทุกตัว</button>' : ''}
+        ${!cowBulkMode ? '<button class="btn btn-primary" onclick="openCow()">➕ เพิ่มวัว</button>' : ''}
       </div>
     </div>
+    ${cowBulkMode ? `<div class="card" style="background:#fef3c7;border-left:4px solid #f59e0b;margin-bottom:14px;padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <b style="color:#92400e">เลือกแล้ว ${cowBulkSelected.size} ตัว</b>
+        <button class="btn btn-sec btn-sm" onclick="bulkSelectAll()">เลือกทั้งหมด (${filtered.length})</button>
+        <button class="btn btn-sec btn-sm" onclick="bulkClearSelection()">ล้าง</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-sec btn-sm" onclick="bulkChangeStatus()" ${!cowBulkSelected.size?'disabled':''}>🔄 เปลี่ยนสถานะ</button>
+        <button class="btn btn-sec btn-sm" onclick="bulkPrintQR()" ${!cowBulkSelected.size?'disabled':''}>🏷️ พิมพ์ QR</button>
+        <button class="btn btn-danger btn-sm" onclick="bulkDelete()" ${!cowBulkSelected.size?'disabled':''}>🗑️ ลบ</button>
+      </div>
+    </div>` : ''}
     <div class="cow-filter-bar">
       ${filters.map(f=>`
         <button class="cow-filter-chip ${cowFilterStatus===f.k?'active':''} ${f.color}" onclick="setCowFilter('${f.k}')">
@@ -2484,7 +2605,8 @@ function renderCows(){
     </div>
     ${filtered.length ? `<div class="cow-grid">
       ${filtered.map(c=>`
-        <div class="cow-card" onclick="showCowProfile('${c.id}')">
+        <div class="cow-card ${cowBulkSelected.has(c.id)?'selected':''}" onclick="${cowBulkMode?`bulkToggleCow('${c.id}', event)`:`showCowProfile('${c.id}')`}" style="${cowBulkSelected.has(c.id)?'border-left-color:#f59e0b;background:#fffbeb':''}">
+          ${cowBulkMode?`<input type="checkbox" ${cowBulkSelected.has(c.id)?'checked':''} onclick="bulkToggleCow('${c.id}', event)" style="width:20px;height:20px;cursor:pointer;flex-shrink:0">`:''}
           ${c.photos && c.photos.length ? `<img class="photo" src="${c.photos[0]}" alt="${c.code}">` : '<div class="photo-placeholder">🐄</div>'}
           <div class="info">
             <div class="cow-code">${c.code}</div>
@@ -2818,6 +2940,20 @@ function openCow(id){
       </select></div>
       <div class="field"><label>Lactation รอบที่</label><input type="number" id="f_lact" value="${c.lactation||1}"></div>
       <div class="field"><label>วันคลอดล่าสุด</label><input type="date" id="f_calve" value="${c.calveDate||''}"></div>
+      <div class="field"><label>🐂 พ่อพันธุ์ (Sire)</label>
+        <select id="f_sire" style="width:100%">
+          <option value="">-- ไม่ระบุ / ภายนอก --</option>
+          ${DB.cows.filter(x=>x.id!==id).map(x=>`<option value="${x.id}" ${c.sireId===x.id?'selected':''}>${x.code} ${x.name||''}</option>`).join('')}
+        </select>
+        <input id="f_sireName" value="${c.sireName||''}" placeholder="หรือพิมพ์ชื่อ (ถ้าภายนอก)" style="margin-top:4px;width:100%">
+      </div>
+      <div class="field"><label>🐄 แม่พันธุ์ (Dam)</label>
+        <select id="f_dam" style="width:100%">
+          <option value="">-- ไม่ระบุ / ภายนอก --</option>
+          ${DB.cows.filter(x=>x.id!==id).map(x=>`<option value="${x.id}" ${c.damId===x.id?'selected':''}>${x.code} ${x.name||''}</option>`).join('')}
+        </select>
+        <input id="f_damName" value="${c.damName||''}" placeholder="หรือพิมพ์ชื่อ (ถ้าภายนอก)" style="margin-top:4px;width:100%">
+      </div>
     </div>
     <div class="field" style="margin-top:12px"><label>หมายเหตุ</label><textarea id="f_notes">${c.notes||''}</textarea></div>
     <div class="field" style="margin-top:12px">
@@ -2845,6 +2981,8 @@ function saveCow(id){
     weight:+$('f_weight').value||0, status:$('f_status').value,
     lactation:+$('f_lact').value||1, calveDate:$('f_calve').value,
     notes:$('f_notes').value,
+    sireId: $('f_sire')?.value || '', sireName: $('f_sireName')?.value.trim() || '',
+    damId: $('f_dam')?.value || '', damName: $('f_damName')?.value.trim() || '',
     photos:[...tempPhotos]
   };
   if(!data.code){ alert('กรุณากรอกรหัสวัว'); return; }
@@ -2945,10 +3083,15 @@ function renderCowProfile(id){
       </table></div>`:'<div class="empty">ไม่มีข้อมูล</div>'}</div>`;
   } else if(cowTab==='photos'){
     const photos = c.photos || [];
+    // จัดกลุ่มตามเดือนเพิ่ม timeline view
     tabContent = `<div class="card"><div class="card-title">📸 รูปภาพ (${photos.length})</div>
       ${photos.length ? `<div class="photo-gallery">
-        ${photos.map(p=>`<img src="${p}" onclick="openLightbox(this.src)">`).join('')}
+        ${photos.map((p,i)=>`<div style="position:relative"><img src="${p}" onclick="openLightbox(this.src)"><div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);color:#fff;font-size:11px;padding:4px;text-align:center">รูปที่ ${i+1}</div></div>`).join('')}
       </div>` : '<div class="empty"><div class="ic">📷</div>ยังไม่มีรูป — กดปุ่มแก้ไขเพื่อเพิ่มรูป</div>'}</div>`;
+  } else if(cowTab==='pedigree'){
+    tabContent = renderPedigreeTree(c);
+  } else if(cowTab==='bcs'){
+    tabContent = renderBCSTab(c);
   }
 
   const photos = c.photos || [];
@@ -2969,6 +3112,8 @@ function renderCowProfile(id){
       <div class="tab ${cowTab==='milk'?'active':''}" onclick="cowTab='milk';renderCowProfile('${id}')">น้ำนม</div>
       <div class="tab ${cowTab==='health'?'active':''}" onclick="cowTab='health';renderCowProfile('${id}')">สุขภาพ</div>
       <div class="tab ${cowTab==='breed'?'active':''}" onclick="cowTab='breed';renderCowProfile('${id}')">ผสมพันธุ์</div>
+      <div class="tab ${cowTab==='pedigree'?'active':''}" onclick="cowTab='pedigree';renderCowProfile('${id}')">🌳 เครือญาติ</div>
+      <div class="tab ${cowTab==='bcs'?'active':''}" onclick="cowTab='bcs';renderCowProfile('${id}')">⚖️ BCS</div>
       <div class="tab ${cowTab==='photos'?'active':''}" onclick="cowTab='photos';renderCowProfile('${id}')">รูปภาพ ${photos.length?'('+photos.length+')':''}</div>
     </div>
     ${tabContent}`;
@@ -2976,6 +3121,136 @@ function renderCowProfile(id){
   if(cowTab==='milk' && c.calveDate && milkRecs.length){
     setTimeout(()=>renderLactationChart(c, milkRecs), 50);
   }
+  // Render BCS chart
+  if(cowTab==='bcs'){
+    setTimeout(()=>renderBCSChart(c), 50);
+  }
+}
+
+// ============== Pedigree Tree (สายเลือดวัว) ==============
+function pedigreeName(idOrName, externalName){
+  if(idOrName){
+    const c = DB.cows.find(x=>x.id===idOrName);
+    if(c) return {label:`${c.code} ${c.name||''}`, ref:c, internal:true};
+  }
+  if(externalName) return {label:externalName, internal:false};
+  return null;
+}
+
+function pedNode(info, color){
+  if(!info) return `<div style="padding:10px 14px;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;text-align:center;color:#9ca3af;font-size:13px">— ไม่ระบุ —</div>`;
+  if(info.internal){
+    return `<div style="padding:10px 14px;background:${color};color:#fff;border-radius:10px;text-align:center;cursor:pointer;font-weight:600;font-size:14px" onclick="showCowProfile('${info.ref.id}')" title="คลิกเพื่อดูประวัติ">${info.label}<div style="font-size:11px;opacity:.85;margin-top:2px">${info.ref.breed||''}</div></div>`;
+  }
+  return `<div style="padding:10px 14px;background:#fff;border:2px solid ${color};color:${color};border-radius:10px;text-align:center;font-weight:600;font-size:13px">${info.label}<div style="font-size:10px;opacity:.7">(ภายนอก)</div></div>`;
+}
+
+function renderPedigreeTree(c){
+  const sire = pedigreeName(c.sireId, c.sireName);
+  const dam = pedigreeName(c.damId, c.damName);
+  // Grandparents (gen 2)
+  const sireSire = sire?.internal ? pedigreeName(sire.ref.sireId, sire.ref.sireName) : null;
+  const sireDam = sire?.internal ? pedigreeName(sire.ref.damId, sire.ref.damName) : null;
+  const damSire = dam?.internal ? pedigreeName(dam.ref.sireId, dam.ref.sireName) : null;
+  const damDam = dam?.internal ? pedigreeName(dam.ref.damId, dam.ref.damName) : null;
+
+  // หาลูกของวัวตัวนี้
+  const offspring = DB.cows.filter(x=>x.sireId===c.id || x.damId===c.id);
+
+  return `<div class="card"><div class="card-title">🌳 เครือญาติ (Pedigree)</div>
+    ${!sire && !dam ? `<div class="empty"><div class="ic">🌳</div>ยังไม่ได้ระบุพ่อ-แม่พันธุ์<br><button class="btn btn-sec btn-sm" style="margin-top:10px" onclick="openCow('${c.id}')">✏️ เพิ่มข้อมูล</button></div>` : `
+    <div style="overflow-x:auto;padding:10px 0">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+        <div style="text-align:center;font-size:11px;color:#6b7280;font-weight:600">🐂 ฝั่งพ่อ (Sire)</div>
+        <div style="text-align:center;font-size:11px;color:#6b7280;font-weight:600">🐄 ฝั่งแม่ (Dam)</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        ${pedNode(sire, '#3b82f6')}
+        ${pedNode(dam, '#ec4899')}
+      </div>
+      ${(sireSire||sireDam||damSire||damDam) ? `
+        <div style="text-align:center;font-size:11px;color:#9ca3af;margin-bottom:6px">↑ ปู่/ย่า · ตา/ยาย ↑</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+          ${pedNode(sireSire, '#60a5fa')}
+          ${pedNode(sireDam, '#f9a8d4')}
+          ${pedNode(damSire, '#60a5fa')}
+          ${pedNode(damDam, '#f9a8d4')}
+        </div>` : ''}
+      <div style="text-align:center;margin-top:20px;font-size:12px;color:#6b7280">
+        ↓ <b style="font-size:14px;color:#15803d">${c.code} ${c.name||''}</b> ↓
+      </div>
+    </div>`}
+    ${offspring.length?`<div style="margin-top:20px;padding-top:14px;border-top:1px solid #e5e7eb">
+      <div style="font-weight:600;margin-bottom:8px">🐮 ลูก (${offspring.length} ตัว)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px">
+        ${offspring.map(o=>`<div style="padding:8px 12px;background:#dcfce7;color:#15803d;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600" onclick="showCowProfile('${o.id}')">${o.code} ${o.name||''}</div>`).join('')}
+      </div>
+    </div>`:''}
+  </div>`;
+}
+
+// ============== BCS Chart ==============
+function renderBCSTab(c){
+  const bcsRecs = (DB.bcs||[]).filter(x=>x.cowId===c.id).sort((a,b)=>a.date.localeCompare(b.date));
+  const latest = bcsRecs[bcsRecs.length-1];
+  return `<div class="card">
+    <div class="card-title">⚖️ Body Condition Score (BCS)</div>
+    <p class="muted" style="font-size:13px;margin-bottom:10px">BCS วัดความสมบูรณ์ร่างกาย: 1.0 (ผอมมาก) → 5.0 (อ้วนมาก) — เกณฑ์ปกติ <b>3.0-3.5</b> สำหรับวัวให้นม</p>
+    <button class="btn btn-primary btn-sm" onclick="openBCS('${c.id}')">➕ บันทึก BCS ใหม่</button>
+    ${latest ? `<div style="margin-top:14px;padding:14px;background:linear-gradient(135deg,${latest.score<2.5||latest.score>4?'#fee2e2,#fecaca':'#dcfce7,#bbf7d0'});border-radius:10px;text-align:center">
+      <div style="font-size:12px;color:#1f2937">BCS ล่าสุด (${latest.date})</div>
+      <div style="font-size:36px;font-weight:800;color:${latest.score<2.5||latest.score>4?'#b91c1c':'#15803d'}">${latest.score.toFixed(1)}</div>
+      <div style="font-size:11px;color:#4b5563;margin-top:4px">${latest.score<2.5?'⚠️ ผอม — เพิ่มอาหาร':latest.score>4?'⚠️ อ้วน — ลดอาหาร':'✅ อยู่ในเกณฑ์ปกติ'}</div>
+    </div>` : ''}
+    ${bcsRecs.length>=2 ? `<div style="position:relative;height:240px;margin-top:14px"><canvas id="bcsChart_${c.id}"></canvas></div>` : `<div class="empty" style="margin-top:14px">ต้องบันทึก BCS อย่างน้อย 2 ครั้งเพื่อแสดงกราฟ</div>`}
+    ${bcsRecs.length ? `<div class="table-wrap" style="margin-top:14px"><table>
+      <tr><th>วันที่</th><th>BCS</th><th>หมายเหตุ</th></tr>
+      ${bcsRecs.slice().reverse().map(b=>`<tr><td>${b.date}</td><td><b>${b.score.toFixed(1)}</b></td><td>${b.note||''}</td></tr>`).join('')}
+    </table></div>` : ''}
+  </div>`;
+}
+
+function renderBCSChart(c){
+  const canvas = document.getElementById('bcsChart_'+c.id);
+  if(!canvas || !window.Chart) return;
+  const recs = (DB.bcs||[]).filter(x=>x.cowId===c.id).sort((a,b)=>a.date.localeCompare(b.date));
+  if(recs.length<2) return;
+  if(chartInstances['bcs_'+c.id]) chartInstances['bcs_'+c.id].destroy();
+  chartInstances['bcs_'+c.id] = new Chart(canvas, {
+    type:'line',
+    data:{
+      labels: recs.map(r=>r.date),
+      datasets:[
+        {label:'BCS', data:recs.map(r=>r.score), borderColor:'#16a34a', backgroundColor:'#16a34a', tension:0.3, pointRadius:5, fill:false},
+        {label:'เกณฑ์ปกติ (3.0)', data:recs.map(()=>3.0), borderColor:'#9ca3af', borderDash:[6,4], pointRadius:0, borderWidth:1, fill:false},
+        {label:'เกณฑ์ปกติ (3.5)', data:recs.map(()=>3.5), borderColor:'#9ca3af', borderDash:[6,4], pointRadius:0, borderWidth:1, fill:false}
+      ]
+    },
+    options:{responsive:true, maintainAspectRatio:false, scales:{y:{min:1, max:5, ticks:{stepSize:0.5}}}, plugins:{legend:{position:'bottom'}}}
+  });
+}
+
+function openBCS(cowId){
+  openModal(`<h3>⚖️ บันทึก BCS</h3>
+    <div class="form-grid">
+      <div class="field"><label>วันที่</label><input type="date" id="bcs_date" value="${today()}"></div>
+      <div class="field"><label>BCS (1.0 - 5.0)</label><input type="number" step="0.25" min="1" max="5" id="bcs_score" value="3.0"></div>
+    </div>
+    <div class="field" style="margin-top:12px"><label>หมายเหตุ</label><textarea id="bcs_note"></textarea></div>
+    <div class="modal-foot">
+      <button class="btn btn-sec" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveBCS('${cowId}')">💾 บันทึก</button>
+    </div>`);
+}
+
+function saveBCS(cowId){
+  const score = +$('bcs_score').value;
+  if(!score || score<1 || score>5){ alert('BCS ต้องอยู่ระหว่าง 1.0 - 5.0'); return; }
+  if(!DB.bcs) DB.bcs = [];
+  DB.bcs.push({id:uid(), cowId, date:$('bcs_date').value, score, note:$('bcs_note').value, recordedBy:currentUser.name});
+  log('add-bcs','บันทึก BCS '+cowName(cowId)+' = '+score);
+  save(); closeModal(); refresh();
+  showToast('บันทึก BCS แล้ว','success');
 }
 
 // ============== Lactation Curve Chart ==============
@@ -3470,6 +3745,105 @@ function generateInsights(){
   return insights;
 }
 
+// ============== Weather Widget — Open-Meteo (ฟรี, ไม่ต้อง API key) ==============
+let _weatherCache = null;
+function renderWeatherWidget(){
+  const lat = DB.settings.farmLat;
+  const lng = DB.settings.farmLng;
+  if(!lat || !lng){
+    return `<div class="card" style="margin-bottom:14px;border-left:4px solid #9ca3af">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:32px">🌤️</span>
+        <div style="flex:1">
+          <div style="font-weight:600">สภาพอากาศ — ยังไม่ได้ตั้งพิกัดฟาร์ม</div>
+          <div style="font-size:12px;color:#6b7280">ไปที่ <a href="javascript:showPage('settings')" style="color:#16a34a">ตั้งค่า</a> → ใส่ Latitude/Longitude</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  // Async fetch + cache เพื่อหลีกเลี่ยง re-render ซ้ำ
+  fetchWeather(lat, lng);
+  if(!_weatherCache){
+    return `<div class="card" style="margin-bottom:14px" id="weatherCard"><div style="text-align:center;color:#6b7280">⏳ กำลังโหลดสภาพอากาศ...</div></div>`;
+  }
+  return weatherHTML(_weatherCache);
+}
+
+async function fetchWeather(lat,lng){
+  const cacheKey = `weather_${lat}_${lng}`;
+  try{
+    const cached = localStorage.getItem(cacheKey);
+    if(cached){
+      const obj = JSON.parse(cached);
+      if(Date.now() - obj.ts < 30*60*1000){ // cache 30 min
+        _weatherCache = obj.data;
+        return;
+      }
+    }
+  }catch(e){}
+  try{
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=Asia%2FBangkok&forecast_days=4`);
+    const data = await r.json();
+    _weatherCache = data;
+    try{ localStorage.setItem(cacheKey, JSON.stringify({ts:Date.now(), data})); }catch(e){}
+    // re-render dashboard ถ้ายังอยู่
+    if(currentPage==='dashboard'){
+      const card = document.getElementById('weatherCard');
+      if(card) card.outerHTML = weatherHTML(data);
+    }
+  }catch(e){ console.error('Weather fetch:', e); }
+}
+
+function weatherCodeToInfo(code){
+  // WMO weather codes
+  const map = {
+    0:['☀️','แดดจัด','#fbbf24'],
+    1:['🌤️','แดดจ้า','#fbbf24'], 2:['⛅','ฟ้าโปร่ง','#9ca3af'], 3:['☁️','เมฆมาก','#6b7280'],
+    45:['🌫️','หมอก','#9ca3af'], 48:['🌫️','หมอกแข็ง','#9ca3af'],
+    51:['🌦️','ฝนปรอย','#60a5fa'], 53:['🌦️','ฝนปรอยปานกลาง','#60a5fa'], 55:['🌧️','ฝนปรอยหนัก','#3b82f6'],
+    61:['🌧️','ฝนเบา','#60a5fa'], 63:['🌧️','ฝนปานกลาง','#3b82f6'], 65:['⛈️','ฝนหนัก','#1e40af'],
+    71:['🌨️','หิมะเบา','#bfdbfe'], 73:['🌨️','หิมะปานกลาง','#bfdbfe'], 75:['❄️','หิมะหนัก','#3b82f6'],
+    80:['🌦️','ฝนซู่','#3b82f6'], 81:['🌧️','ฝนซู่หนัก','#1e40af'], 82:['⛈️','ฝนซู่รุนแรง','#1e40af'],
+    95:['⛈️','พายุฝนฟ้าคะนอง','#dc2626'], 96:['⛈️','พายุ+ลูกเห็บ','#dc2626'], 99:['⛈️','พายุรุนแรง','#dc2626']
+  };
+  return map[code] || ['🌤️','-','#9ca3af'];
+}
+
+function weatherHTML(data){
+  const cur = data.current || {};
+  const daily = data.daily || {};
+  const [icon, label, color] = weatherCodeToInfo(cur.weather_code);
+  const today_ = new Date().toLocaleDateString('th-TH',{weekday:'long'});
+  // Heat stress warning
+  const heatWarn = cur.temperature_2m > 32 ? '⚠️ อากาศร้อนจัด — วัวอาจเครียดจากความร้อน เปิดพัดลม/ฉีดน้ำคอก' : '';
+  return `<div class="card" id="weatherCard" style="margin-bottom:14px;border-left:4px solid ${color}">
+    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:14px">
+      <div style="display:flex;gap:14px;align-items:center;flex:1;min-width:240px">
+        <div style="font-size:48px;line-height:1">${icon}</div>
+        <div>
+          <div style="font-size:28px;font-weight:800">${Math.round(cur.temperature_2m)}°C</div>
+          <div style="font-size:13px;color:#4b5563">${label} · 💧 ${cur.relative_humidity_2m}% · 🌬️ ${cur.wind_speed_10m} km/h</div>
+          <div style="font-size:11px;color:#9ca3af">${today_}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${(daily.time||[]).slice(1,4).map((d,i)=>{
+          const [ic] = weatherCodeToInfo(daily.weather_code[i+1]);
+          const dDate = new Date(d);
+          const dayLabel = dDate.toLocaleDateString('th-TH',{weekday:'short'});
+          return `<div style="text-align:center;padding:8px 12px;background:#f9fafb;border-radius:8px;min-width:70px">
+            <div style="font-size:11px;color:#6b7280">${dayLabel}</div>
+            <div style="font-size:20px;line-height:1.2">${ic}</div>
+            <div style="font-size:11px"><b>${Math.round(daily.temperature_2m_max[i+1])}°</b>/${Math.round(daily.temperature_2m_min[i+1])}°</div>
+            <div style="font-size:10px;color:#3b82f6">💧${daily.precipitation_probability_max[i+1]}%</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    ${heatWarn?`<div style="margin-top:10px;padding:8px 12px;background:#fee2e2;color:#b91c1c;border-radius:8px;font-size:13px">${heatWarn}</div>`:''}
+  </div>`;
+}
+
 // Widget แสดงการเตือน + AI insight บน Dashboard
 function renderRemindersWidget(){
   try{
@@ -3698,6 +4072,88 @@ function maybeAutoStartTutorial(){
     // รอ 3 วินาทีให้แอพโหลดเสร็จก่อน
     setTimeout(()=>{ if(currentPage==='dashboard') startTutorial(); }, 3000);
   }catch(e){}
+}
+
+// ============== Demo Data — ข้อมูลตัวอย่างให้ลูกค้าใหม่ลองเล่น ==============
+function loadDemoData(){
+  if(DB.cows.length>0 && !confirm('ฟาร์มมีข้อมูลอยู่แล้ว — ใส่ตัวอย่างเพิ่มไหม? (ตัวอย่างจะ flag เป็น demo ลบทีหลังได้)')) return;
+  const today_ = new Date();
+  const dateStr = d => d.toISOString().slice(0,10);
+
+  // 5 วัวตัวอย่าง
+  const demoCows = [
+    {code:'C001', name:'น้องนิด', breed:'Holstein-Friesian', birth:'2022-03-15', weight:580, status:'lactating', lactation:2, calveDate:dateStr(new Date(today_.getTime()-90*86400000))},
+    {code:'C002', name:'น้องหน่อย', breed:'Holstein-Friesian', birth:'2023-01-20', weight:520, status:'lactating', lactation:1, calveDate:dateStr(new Date(today_.getTime()-180*86400000))},
+    {code:'C003', name:'น้องนาง', breed:'Brown Swiss', birth:'2021-09-10', weight:610, status:'pregnant', lactation:3, calveDate:dateStr(new Date(today_.getTime()-260*86400000))},
+    {code:'C004', name:'ลูกแก้ว', breed:'Holstein-Friesian', birth:'2025-08-01', weight:280, status:'heifer', lactation:0, calveDate:''},
+    {code:'C005', name:'น้องน้ำ', breed:'Jersey Cross', birth:'2022-11-22', weight:480, status:'dry', lactation:2, calveDate:dateStr(new Date(today_.getTime()-310*86400000))}
+  ];
+  demoCows.forEach(c=>{ c.id = uid(); c.isDemo = true; c.notes='ข้อมูลตัวอย่าง'; c.photos=[]; DB.cows.push(c); });
+
+  // บันทึกน้ำนม 14 วันล่าสุด (เฉพาะวัว lactating)
+  const lactIds = demoCows.filter(c=>c.status==='lactating').map(c=>c.id);
+  for(let i=0;i<14;i++){
+    const d = new Date(today_); d.setDate(d.getDate()-i);
+    const dstr = dateStr(d);
+    lactIds.forEach(cid=>{
+      const morn = 11 + Math.random()*3;
+      const eve  = 9 + Math.random()*3;
+      DB.milk.push({id:uid(), date:dstr, cowId:cid, session:'morning', amount:+morn.toFixed(1), fat:3.8, protein:3.2, recordedBy:'(demo)', isDemo:true});
+      DB.milk.push({id:uid(), date:dstr, cowId:cid, session:'evening', amount:+eve.toFixed(1), fat:3.6, protein:3.1, recordedBy:'(demo)', isDemo:true});
+    });
+  }
+
+  // ลูกค้าตัวอย่าง 1 ราย
+  if(!DB.customers) DB.customers = [];
+  const cust = {id:uid(), name:'สหกรณ์โคนมตัวอย่าง', code:'COOP01', phone:'044-123456', address:'123 ม.4 อ.เมือง จ.นครราชสีมา', taxId:'1234567890123', isDemo:true};
+  DB.customers.push(cust);
+
+  // 3 Invoice ตัวอย่าง
+  if(!DB.sales) DB.sales = [];
+  for(let i=0;i<3;i++){
+    const d = new Date(today_); d.setDate(d.getDate()-i*7);
+    const dstr = dateStr(d);
+    const qty = 1200 + Math.random()*400;
+    const price = 22;
+    const gross = +(qty*price).toFixed(2);
+    const net = +(gross - 800).toFixed(2);
+    DB.sales.push({id:uid(), invoiceNo:`INV${dstr.replace(/-/g,'')}-${i+1}`, date:dstr, customerId:cust.id, qty:+qty.toFixed(1), price, gross, dShipping:500, dQuality:200, dCoop:100, dOther:0, net, status:i===0?'unpaid':'paid', paidDate:i===0?'':dstr, isDemo:true});
+  }
+
+  // 2 ผสมพันธุ์
+  DB.breed.push({id:uid(), date:dateStr(new Date(today_.getTime()-30*86400000)), cowId:demoCows[1].id, method:'AI', sire:'พ่อพันธุ์ Holstein USA', expected:dateStr(new Date(today_.getTime()+250*86400000)), result:'รอผล', recordedBy:'(demo)', isDemo:true});
+  DB.breed.push({id:uid(), date:dateStr(new Date(today_.getTime()-160*86400000)), cowId:demoCows[2].id, method:'AI', sire:'พ่อพันธุ์ Brown Swiss', expected:dateStr(new Date(today_.getTime()+115*86400000)), result:'ติด', confirmed:true, recordedBy:'(demo)', isDemo:true});
+
+  // วัคซีน 2 ครั้ง
+  DB.health.push({id:uid(), date:dateStr(new Date(today_.getTime()-60*86400000)), cowId:demoCows[0].id, type:'วัคซีน', detail:'FMD รอบ 1/2', cost:50, followUp:dateStr(new Date(today_.getTime()+120*86400000)), recordedBy:'(demo)', isDemo:true});
+  DB.health.push({id:uid(), date:dateStr(new Date(today_.getTime()-45*86400000)), cowId:demoCows[1].id, type:'ถ่ายพยาธิ', detail:'Ivermectin', cost:40, followUp:dateStr(new Date(today_.getTime()+75*86400000)), recordedBy:'(demo)', isDemo:true});
+
+  // ค่าใช้จ่ายตัวอย่าง
+  for(let i=0;i<5;i++){
+    const d = new Date(today_); d.setDate(d.getDate()-i*3);
+    DB.expenses.push({id:uid(), date:dateStr(d), category:i%2?'ค่าอาหารสัตว์':'ค่าแรงงาน', amount:i%2?2500:3000, note:'(demo)', recordedBy:'(demo)', isDemo:true});
+  }
+
+  // สต็อก
+  if(!DB.inventory) DB.inventory = [];
+  DB.inventory.push({id:uid(), name:'อาหารผสม 16%', qty:150, unit:'กก.', minStock:50, isDemo:true});
+  DB.inventory.push({id:uid(), name:'หญ้าแห้ง', qty:30, unit:'มัด', minStock:20, isDemo:true});
+
+  log('demo-load','โหลดข้อมูลตัวอย่าง');
+  save();
+  showToast('✅ โหลดข้อมูลตัวอย่างแล้ว — ลองดูเมนูต่างๆ ได้เลย','success',6000);
+  refresh();
+}
+
+function clearDemoData(){
+  if(!confirm('ลบข้อมูลตัวอย่างทั้งหมด? (ข้อมูลที่กรอกเองจะคงอยู่)')) return;
+  ['cows','milk','breed','health','expenses','income','sales','customers','inventory','feed','grass','weights','bcs','env','heats','employees','payroll','timeclock','tasks'].forEach(coll=>{
+    if(DB[coll]) DB[coll] = DB[coll].filter(x=>!x.isDemo);
+  });
+  log('demo-clear','ลบข้อมูลตัวอย่าง');
+  save();
+  showToast('🗑️ ลบข้อมูลตัวอย่างเรียบร้อย','success');
+  refresh();
 }
 
 // ============== Toast Notification ==============
@@ -5866,6 +6322,7 @@ function renderRep(){
     <div class="page-head">
       <div class="page-title">📈 รายงาน & กำไร</div>
       <div class="page-actions">
+        <button class="btn btn-sec" onclick="openTaxReport()">📋 รายงานภาษี</button>
         <button class="btn btn-primary" onclick="exportExcel()">📊 ส่งออก Excel</button>
         <button class="btn btn-sec" onclick="exportData()">📥 ส่งออก JSON</button>
         <button class="btn btn-sec" onclick="importData()">📤 นำเข้า JSON</button>
@@ -5903,6 +6360,201 @@ function renderRep(){
 }
 
 // ================== KPI ==================
+// ============== Tax Report (รายงานสรุปภาษี) ==============
+function openTaxReport(){
+  const curYear = new Date().getFullYear();
+  const years = [];
+  for(let y=curYear; y>=curYear-3; y--) years.push(y);
+  openModal(`
+    <h3>📋 รายงานสรุปสำหรับยื่นภาษี</h3>
+    <p class="muted" style="font-size:13px;margin-bottom:14px">สรุปรายได้-ค่าใช้จ่ายตามปี/เดือน — ใช้เป็นข้อมูลประกอบการยื่น ภ.ง.ด.90/94 (บุคคล) หรือ ภ.ง.ด.50/51 (นิติบุคคล)</p>
+    <div class="form-grid">
+      <div class="field"><label>ปีภาษี (พ.ศ.)</label>
+        <select id="tax_year" style="width:100%">
+          ${years.map(y=>`<option value="${y}">${y+543} (${y})</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>ประเภท</label>
+        <select id="tax_type" style="width:100%">
+          <option value="annual">รายงานทั้งปี</option>
+          <option value="half">ครึ่งปีแรก (ม.ค.-มิ.ย.)</option>
+          <option value="half2">ครึ่งปีหลัง (ก.ค.-ธ.ค.)</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding:10px;background:#fef3c7;color:#92400e;font-size:12px;border-radius:8px">
+      💡 <b>ข้อมูลทางภาษี</b>: ฟาร์มเกษตรกรรายย่อย (รายได้&lt;1.8ล้าน/ปี) ได้รับยกเว้น VAT · เกษตรกรบุคคล มีลดหย่อน 60% ของรายได้ (ภ.ง.ด.94) · นิติบุคคลใช้รายได้-รายจ่ายจริงตามเอกสาร
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-sec" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="printTaxReport()">🖨️ ดู / พิมพ์ PDF</button>
+    </div>`);
+}
+
+function printTaxReport(){
+  const year = +$('tax_year').value;
+  const type = $('tax_type').value;
+  closeModal();
+
+  let fromMonth = 0, toMonth = 11, periodLabel = `ทั้งปี (ม.ค. - ธ.ค. ${year+543})`;
+  if(type==='half'){ toMonth = 5; periodLabel = `ครึ่งปีแรก (ม.ค. - มิ.ย. ${year+543})`; }
+  if(type==='half2'){ fromMonth = 6; periodLabel = `ครึ่งปีหลัง (ก.ค. - ธ.ค. ${year+543})`; }
+  const fromDate = `${year}-${String(fromMonth+1).padStart(2,'0')}-01`;
+  const toDate = `${year}-${String(toMonth+1).padStart(2,'0')}-31`;
+
+  const inc = (DB.income||[]).filter(i=>i.date>=fromDate && i.date<=toDate);
+  const exp = (DB.expenses||[]).filter(e=>e.date>=fromDate && e.date<=toDate);
+  const sales = (DB.sales||[]).filter(s=>s.date>=fromDate && s.date<=toDate && s.status==='paid');
+
+  // สรุปรายเดือน
+  const byMonth = {};
+  for(let m=fromMonth; m<=toMonth; m++){
+    byMonth[m] = {inc:0, exp:0, count:0};
+  }
+  inc.forEach(i=>{
+    const m = +i.date.slice(5,7)-1;
+    if(byMonth[m]){ byMonth[m].inc += +i.amount||0; byMonth[m].count++; }
+  });
+  exp.forEach(e=>{
+    const m = +e.date.slice(5,7)-1;
+    if(byMonth[m]){ byMonth[m].exp += +e.amount||0; }
+  });
+
+  const totalInc = inc.reduce((s,i)=>s+(+i.amount||0),0);
+  const totalExp = exp.reduce((s,e)=>s+(+e.amount||0),0);
+  const profit = totalInc - totalExp;
+  // สำหรับเกษตรกรบุคคล: หัก 60% เป็นค่าใช้จ่ายเหมา (ตัวเลือก)
+  const flat60 = totalInc * 0.6;
+  const taxableFlat = totalInc - flat60;
+  const taxableActual = profit; // หักจริง
+
+  // หมวดค่าใช้จ่าย
+  const byCat = {};
+  exp.forEach(e=>{ byCat[e.category||'อื่นๆ'] = (byCat[e.category||'อื่นๆ']||0) + (+e.amount||0); });
+
+  const numTH = n => (+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const monthNames = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+
+  const farmName = DB.settings.farmName||'ฟาร์ม';
+  const ownerPhone = DB.settings.ownerPhone||'';
+  const farmAddress = DB.settings.farmAddress||'';
+
+  const win = window.open('','_blank','width=900,height=1100');
+  win.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
+    <title>รายงานภาษี ${year+543}</title>
+    <style>
+      @page{size:A4;margin:15mm}
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:-apple-system,"Sukhumvit Set","Noto Sans Thai",sans-serif;color:#1f2937;line-height:1.5;padding:20px;max-width:900px;margin:auto}
+      .header{padding-bottom:20px;border-bottom:3px solid #15803d;margin-bottom:20px;text-align:center}
+      .header h1{font-size:22pt;color:#15803d}
+      .header .sub{font-size:14pt;color:#374151;margin-top:6px}
+      .header .meta{font-size:10pt;color:#6b7280;margin-top:6px}
+      .section{margin-bottom:24px}
+      .section-title{font-size:14pt;font-weight:700;color:#111827;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e5e7eb}
+      table{width:100%;border-collapse:collapse;font-size:11pt}
+      table th{background:#15803d;color:#fff;padding:8px;text-align:left}
+      table td{padding:8px;border-bottom:1px solid #e5e7eb}
+      table tr:nth-child(even) td{background:#f9fafb}
+      .right{text-align:right}
+      .totals-row td{font-weight:700;background:#f3f4f6!important;border-top:2px solid #15803d}
+      .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+      .sum-card{padding:14px;border-radius:8px;text-align:center}
+      .sum-card .lbl{font-size:10pt;color:#6b7280;margin-bottom:4px}
+      .sum-card .val{font-size:14pt;font-weight:700}
+      .sum-card.inc{background:#dbeafe} .sum-card.inc .val{color:#1e40af}
+      .sum-card.exp{background:#fee2e2} .sum-card.exp .val{color:#b91c1c}
+      .sum-card.prof{background:#dcfce7} .sum-card.prof .val{color:#15803d}
+      .tax-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+      .tax-card{padding:14px;border:2px solid #e5e7eb;border-radius:10px}
+      .tax-card h4{font-size:11pt;color:#111827;margin-bottom:8px}
+      .tax-card .desc{font-size:10pt;color:#6b7280;margin-bottom:8px}
+      .tax-card .val{font-size:14pt;font-weight:700;color:#15803d}
+      .disclaimer{margin-top:20px;padding:12px;background:#fef3c7;color:#92400e;border-radius:8px;font-size:10pt}
+      button.print-btn{padding:10px 20px;background:#15803d;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;margin:20px auto;display:block}
+      @media print{button.print-btn{display:none}body{padding:0}}
+    </style></head><body>
+    <button class="print-btn" onclick="window.print()">🖨️ พิมพ์ / Save PDF</button>
+    <div class="header">
+      <h1>📋 รายงานสรุปเพื่อยื่นภาษี</h1>
+      <div class="sub">${farmName}</div>
+      <div class="meta">งวด: ${periodLabel}</div>
+      ${farmAddress?`<div class="meta">${farmAddress}</div>`:''}
+      ${ownerPhone?`<div class="meta">📞 ${ownerPhone}</div>`:''}
+    </div>
+
+    <div class="section">
+      <div class="section-title">📊 สรุปภาพรวม</div>
+      <div class="summary">
+        <div class="sum-card inc"><div class="lbl">รายได้รวม</div><div class="val">฿${numTH(totalInc)}</div></div>
+        <div class="sum-card exp"><div class="lbl">ค่าใช้จ่ายรวม</div><div class="val">฿${numTH(totalExp)}</div></div>
+        <div class="sum-card prof"><div class="lbl">กำไรสุทธิ</div><div class="val">฿${numTH(profit)}</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">📅 รายได้-ค่าใช้จ่าย รายเดือน</div>
+      <table>
+        <tr><th>เดือน</th><th class="right">รายได้</th><th class="right">ค่าใช้จ่าย</th><th class="right">กำไร</th></tr>
+        ${Object.entries(byMonth).map(([m,d])=>`<tr>
+          <td>${monthNames[+m]} ${year+543}</td>
+          <td class="right">฿${numTH(d.inc)}</td>
+          <td class="right">฿${numTH(d.exp)}</td>
+          <td class="right" style="color:${d.inc-d.exp>=0?'#15803d':'#b91c1c'};font-weight:600">฿${numTH(d.inc-d.exp)}</td>
+        </tr>`).join('')}
+        <tr class="totals-row">
+          <td>รวมทั้งงวด</td>
+          <td class="right">฿${numTH(totalInc)}</td>
+          <td class="right">฿${numTH(totalExp)}</td>
+          <td class="right" style="color:${profit>=0?'#15803d':'#b91c1c'}">฿${numTH(profit)}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">💸 ค่าใช้จ่ายแยกตามหมวด</div>
+      <table>
+        <tr><th>หมวด</th><th class="right">จำนวนเงิน</th><th class="right">% ของรวม</th></tr>
+        ${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>`<tr>
+          <td>${cat}</td>
+          <td class="right">฿${numTH(amt)}</td>
+          <td class="right">${totalExp>0?((amt/totalExp)*100).toFixed(1):0}%</td>
+        </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:#9ca3af;padding:20px">ไม่มีค่าใช้จ่ายในงวดนี้</td></tr>'}
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">⚖️ ทางเลือกในการคำนวณภาษี (เกษตรกรบุคคลธรรมดา)</div>
+      <div class="tax-options">
+        <div class="tax-card">
+          <h4>🅰️ หักเหมา 60% (ภ.ง.ด.94 มาตรา 40(8))</h4>
+          <div class="desc">รายได้ ฿${numTH(totalInc)} − ค่าใช้จ่ายเหมา 60% = ฿${numTH(flat60)}</div>
+          <div style="font-size:11pt;color:#374151">เงินได้สุทธิที่ต้องเสียภาษี:</div>
+          <div class="val">฿${numTH(taxableFlat)}</div>
+          <div class="desc" style="margin-top:6px">เหมาะกับเอกสารใบเสร็จไม่ครบ — ไม่ต้องแสดงรายละเอียดค่าใช้จ่าย</div>
+        </div>
+        <div class="tax-card">
+          <h4>🅱️ หักจริงตามเอกสาร</h4>
+          <div class="desc">รายได้ ฿${numTH(totalInc)} − ค่าใช้จ่ายจริง ฿${numTH(totalExp)}</div>
+          <div style="font-size:11pt;color:#374151">เงินได้สุทธิที่ต้องเสียภาษี:</div>
+          <div class="val">฿${numTH(taxableActual)}</div>
+          <div class="desc" style="margin-top:6px">${taxableActual<taxableFlat?'✅ ทางนี้เสียภาษีน้อยกว่า':'⚠️ ทางนี้เสียภาษีมากกว่า'} — เลือกตามที่กฎหมายอนุญาต</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="disclaimer">
+      <b>⚠️ ข้อสำคัญ:</b> รายงานนี้สรุปจากข้อมูลที่บันทึกในระบบเท่านั้น โปรดตรวจสอบความถูกต้องและปรึกษาผู้เชี่ยวชาญภาษีหรือนักบัญชีก่อนยื่นจริง · FarmMeth ไม่รับผิดชอบต่อการคำนวณภาษีผิดพลาด
+    </div>
+
+    <div style="text-align:center;margin-top:20px;font-size:9pt;color:#9ca3af">
+      ออกโดย FarmMeth · farmmeth.com · พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')}
+    </div>
+    <script>window.onload=()=>{setTimeout(()=>window.print(), 500)}<\/script>
+    </body></html>`);
+  win.document.close();
+}
+
 function renderKpi(){
   if(!guardOwnerOnly()) return;
   const lactCows = DB.cows.filter(c=>c.status==='lactating');
@@ -5975,6 +6627,15 @@ function renderSet(){
         <div class="field"><label>PIN เจ้าของฟาร์ม (4-6 หลัก)</label><input id="s_pin" value="${DB.settings.ownerPin||'1234'}" maxlength="6"></div>
         <div class="field"><label>เบอร์โทรฟาร์ม</label><input id="s_phone" value="${DB.settings.ownerPhone||''}" placeholder="0812345678"></div>
         <div class="field" style="grid-column:1/-1"><label>ที่อยู่ฟาร์ม (สำหรับใบ Invoice)</label><textarea id="s_addr" rows="2" placeholder="123 หมู่ 4 ต.บ้านโพ อ.เมือง จ.นครราชสีมา 30000">${DB.settings.farmAddress||''}</textarea></div>
+        <div class="field"><label>📍 พิกัด Latitude</label><input id="s_lat" value="${DB.settings.farmLat||''}" placeholder="14.9876" type="number" step="0.000001"></div>
+        <div class="field"><label>📍 พิกัด Longitude</label><input id="s_lng" value="${DB.settings.farmLng||''}" placeholder="102.0975" type="number" step="0.000001"></div>
+        <div class="field" style="grid-column:1/-1">
+          <button class="btn btn-sec btn-sm" onclick="useCurrentLocation()">📡 ใช้ตำแหน่งปัจจุบัน (GPS)</button>
+          ${DB.settings.farmLat ? `<a href="https://www.google.com/maps?q=${DB.settings.farmLat},${DB.settings.farmLng}" target="_blank" class="btn btn-sec btn-sm" style="margin-left:8px">🗺️ ดูใน Google Maps</a>` : ''}
+        </div>
+        ${DB.settings.farmLat && DB.settings.farmLng ? `<div class="field" style="grid-column:1/-1">
+          <iframe src="https://www.google.com/maps?q=${DB.settings.farmLat},${DB.settings.farmLng}&z=15&output=embed" style="width:100%;height:240px;border:0;border-radius:10px"></iframe>
+        </div>` : ''}
       </div>
       <button class="btn btn-primary" style="margin-top:14px" onclick="saveSettings()">💾 บันทึก</button>
     </div>
@@ -6169,10 +6830,24 @@ function saveSettings(){
   if(pin && pin.length>=4) DB.settings.ownerPin = pin;
   if($('s_phone')) DB.settings.ownerPhone = $('s_phone').value.trim();
   if($('s_addr')) DB.settings.farmAddress = $('s_addr').value.trim();
+  if($('s_lat')) DB.settings.farmLat = $('s_lat').value || '';
+  if($('s_lng')) DB.settings.farmLng = $('s_lng').value || '';
   log('edit-settings','แก้ไขตั้งค่าฟาร์ม');
   save();
   alert('บันทึกแล้ว ✅');
   refresh();
+}
+
+function useCurrentLocation(){
+  if(!navigator.geolocation){ showToast('เบราเซอร์ไม่รองรับ GPS','error'); return; }
+  showToast('กำลังหาตำแหน่ง...','info');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    if($('s_lat')) $('s_lat').value = pos.coords.latitude.toFixed(6);
+    if($('s_lng')) $('s_lng').value = pos.coords.longitude.toFixed(6);
+    showToast('✅ ได้ตำแหน่งแล้ว — กดบันทึก','success');
+  }, err=>{
+    showToast('ไม่สามารถหาตำแหน่ง: '+err.message,'error');
+  });
 }
 
 function saveTelegram(){
