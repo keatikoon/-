@@ -55,6 +55,26 @@ body.dark .badge.gray{background:#334155;color:#cbd5e1}
 body.dark .photo-thumb,body.dark .photo-card .photo-placeholder,body.dark .cow-card .photo-placeholder{background:#334155}
 body.dark .photo-upload{border-color:var(--border)}
 body.dark .photo-upload:hover{background:#1e293b}
+/* Toast Notification */
+.toast-stack{position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;max-width:360px;pointer-events:none}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;color:#1f2937;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);font-size:14px;animation:toastIn .3s ease-out;border-left:4px solid #6b7280;pointer-events:auto}
+.toast-info{border-left-color:#3b82f6}
+.toast-success{border-left-color:#16a34a;background:#f0fdf4}
+.toast-warn{border-left-color:#f59e0b;background:#fffbeb}
+.toast-error{border-left-color:#dc2626;background:#fef2f2}
+.toast-alert{border-left-color:#7c3aed;background:#faf5ff}
+.toast-icon{font-size:18px;flex-shrink:0}
+.toast-msg{flex:1;line-height:1.4}
+.toast-x{background:transparent;border:none;color:#6b7280;cursor:pointer;font-size:20px;padding:0 4px;line-height:1}
+.toast-x:hover{color:#1f2937}
+.toast-fade{opacity:0;transform:translateX(20px);transition:all .3s}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+body.dark .toast{background:#1e293b;color:#e2e8f0}
+body.dark .toast-success{background:#0a2a14}
+body.dark .toast-warn{background:#2e1f08}
+body.dark .toast-error{background:#2a0e0e}
+body.dark .toast-alert{background:#1f0a3a}
+@media(max-width:640px){.toast-stack{top:auto;bottom:80px;left:10px;right:10px;max-width:none}}
 /* Plan expire banner */
 .plan-banner{padding:10px 16px;border-radius:10px;margin:8px 16px 0;font-size:14px;cursor:pointer;text-align:center;transition:transform .15s;animation:slideDown .3s ease-out}
 .plan-banner:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
@@ -1678,6 +1698,14 @@ async function enterApp(){
   let defaultPage = currentUser.role==='owner' ? 'dashboard' : 'milkQuick';
   if(!allowedPages.includes(defaultPage)) defaultPage = allowedPages[0] || 'dashboard';
   showPage((savedPage && allowedPages.includes(savedPage)) ? savedPage : defaultPage);
+
+  // Smart reminder + AI insight — ตรวจครั้งแรก 5 วินาทีหลัง enterApp, จากนั้นทุก 1 ชั่วโมง
+  setTimeout(()=>{ try{ runRemindersCheck(false); }catch(e){console.error(e);} }, 5000);
+  if(!window._remindersInterval){
+    window._remindersInterval = setInterval(()=>{ try{ runRemindersCheck(true); }catch(e){} }, 60*60*1000);
+  }
+  // Auto-backup check (รอ 10 วินาทีให้ DB โหลดเสร็จก่อน)
+  setTimeout(()=>{ try{ checkAutoBackup(); }catch(e){console.error(e);} }, 10000);
 }
 
 // Banner เตือนเมื่อ plan ใกล้หมดอายุ (เฉพาะ Owner)
@@ -1703,6 +1731,79 @@ function renderPlanBanner(){
     </div>`;
   }
   return '';
+}
+
+// ============== Multi-Language (i18n) ==============
+// แปล Thai → English / Lao / Khmer สำหรับ UI หลัก
+const LOCALES = {
+  // Menu - หลัก
+  'แดชบอร์ด':       {en:'Dashboard', lo:'ໜ້າຫຼັກ', km:'ផ្ទាំងគ្រប់គ្រង'},
+  'วัวในฟาร์ม':      {en:'Cows', lo:'ງົວ', km:'គោ'},
+  'บันทึกน้ำนม':     {en:'Milk Records', lo:'ບັນທຶກນົມ', km:'កំណត់ត្រាទឹកដោះ'},
+  'สุขภาพ/วัคซีน':   {en:'Health/Vaccine', lo:'ສຸຂະພາບ', km:'សុខភាព/វ៉ាក់សាំង'},
+  'ผสมพันธุ์':       {en:'Breeding', lo:'ການຜະສົມພັນ', km:'បង្កាត់ពូជ'},
+  'ชั่งน้ำหนัก/BCS': {en:'Weight/BCS', lo:'ນ້ຳໜັກ/BCS', km:'ទម្ងន់/BCS'},
+  'การเป็นสัด':      {en:'Heat Cycle', lo:'ການເປັນສັດ', km:'វដ្តកំដៅ'},
+  'สิ่งแวดล้อมคอก':  {en:'Environment', lo:'ສະພາບແວດລ້ອມ', km:'បរិស្ថាន'},
+  'อาหาร':           {en:'Feed', lo:'ອາຫານສັດ', km:'ចំណីសត្វ'},
+  'แปลงหญ้า':        {en:'Pasture', lo:'ສວນຫຍ້າ', km:'វាលស្មៅ'},
+  'สต็อกวัตถุดิบ':    {en:'Inventory', lo:'ສະຕັອກ', km:'ស្តុក'},
+  'ค่าใช้จ่าย':      {en:'Expenses', lo:'ຄ່າໃຊ້ຈ່າຍ', km:'ការចំណាយ'},
+  'รายรับ':          {en:'Income', lo:'ລາຍຮັບ', km:'ប្រាក់ចំណូល'},
+  'รายงาน & กำไร':   {en:'Reports & Profit', lo:'ລາຍງານ', km:'របាយការណ៍'},
+  'KPI ฟาร์ม':       {en:'Farm KPI', lo:'KPI ຟາມ', km:'KPI កសិដ្ឋាន'},
+  'รายชื่อพนักงาน':  {en:'Employees', lo:'ພະນັກງານ', km:'បុគ្គលិក'},
+  'ค่าแรง/เงินเดือน':{en:'Payroll', lo:'ເງິນເດືອນ', km:'ប្រាក់ខែ'},
+  'มอบหมายงาน':      {en:'Assign Tasks', lo:'ມອບໝາຍວຽກ', km:'ចាត់តាំងភារកិច្ច'},
+  'ลงเวลาทำงาน':     {en:'Time Clock', lo:'ລົງເວລາ', km:'កត់ត្រាម៉ោង'},
+  'ปฏิทินงาน':       {en:'Calendar', lo:'ປະຕິທິນ', km:'ប្រតិទិន'},
+  'การแจ้งเตือน':    {en:'Alerts', lo:'ການແຈ້ງເຕືອນ', km:'ការជូនដំណឹង'},
+  'บันทึกกิจกรรม':   {en:'Activity Log', lo:'ບັນທຶກກິດຈະກຳ', km:'កំណត់ហេតុ'},
+  'ตั้งค่า':         {en:'Settings', lo:'ການຕັ້ງຄ່າ', km:'ការកំណត់'},
+  // Sections
+  'หลัก':            {en:'Main', lo:'ຫຼັກ', km:'មេ'},
+  'การเงิน':         {en:'Finance', lo:'ການເງິນ', km:'ហិរញ្ញវត្ថុ'},
+  'พนักงาน':         {en:'Staff', lo:'ພະນັກງານ', km:'បុគ្គលិក'},
+  'อื่น ๆ':          {en:'Other', lo:'ອື່ນໆ', km:'ផ្សេងៗ'},
+  'งานประจำวัน':     {en:'Daily Tasks', lo:'ວຽກປະຈຳວັນ', km:'ការងារប្រចាំថ្ងៃ'},
+  'งาน':             {en:'Tasks', lo:'ວຽກ', km:'កិច្ចការ'},
+  'บันทึกรีดนม':     {en:'Quick Milk Entry', lo:'ບັນທຶກນົມໄວ', km:'កត់ទឹកដោះ'},
+  'บันทึกน้ำนม (ละเอียด)':{en:'Milk (Detailed)', lo:'ນົມ (ລະອຽດ)', km:'ទឹកដោះ (លម្អិត)'},
+  'รายชื่อวัว':      {en:'Cow List', lo:'ລາຍຊື່ງົວ', km:'បញ្ជីគោ'},
+  'บันทึกอาหาร':     {en:'Feed Records', lo:'ບັນທຶກອາຫານ', km:'កំណត់ត្រាចំណី'},
+  'บันทึกสุขภาพ':    {en:'Health Records', lo:'ບັນທຶກສຸຂະພາບ', km:'កំណត់ត្រាសុខភាព'},
+  'บันทึกผสมพันธุ์': {en:'Breeding Records', lo:'ບັນທຶກການຜະສົມພັນ', km:'កំណត់ត្រាបង្កាត់'},
+  'สิ่งแวดล้อม':     {en:'Environment', lo:'ສະພາບແວດລ້ອມ', km:'បរិស្ថាន'},
+  'งานของฉัน':       {en:'My Tasks', lo:'ວຽກຂອງຂ້ອຍ', km:'កិច្ចការខ្ញុំ'},
+  'ลงเวลาเข้า-ออก':  {en:'Clock In/Out', lo:'ລົງເວລາເຂົ້າອອກ', km:'ចូល/ចេញ'},
+  // Common buttons / actions
+  'บันทึก':          {en:'Save', lo:'ບັນທຶກ', km:'រក្សាទុក'},
+  'ยกเลิก':          {en:'Cancel', lo:'ຍົກເລີກ', km:'បោះបង់'},
+  'เพิ่ม':           {en:'Add', lo:'ເພີ່ມ', km:'បន្ថែម'},
+  'ลบ':              {en:'Delete', lo:'ລຶບ', km:'លុប'},
+  'แก้ไข':           {en:'Edit', lo:'ແກ້ໄຂ', km:'កែសម្រួល'},
+  'ออกจากระบบ':      {en:'Logout', lo:'ອອກຈາກລະບົບ', km:'ចេញពីប្រព័ន្ធ'},
+  // Misc
+  'ฟาร์มวัวนม':       {en:'Dairy Farm', lo:'ຟາມໂຄນົມ', km:'កសិដ្ឋានគោទឹកដោះ'},
+  'ภาษา':            {en:'Language', lo:'ພາສາ', km:'ភាសា'}
+};
+
+const LANG_NAMES = {th:'🇹🇭 ไทย', en:'🇬🇧 English', lo:'🇱🇦 ລາວ', km:'🇰🇭 ខ្មែរ'};
+
+function tr(thai){
+  if(!DB?.settings?.lang || DB.settings.lang==='th') return thai;
+  const lang = DB.settings.lang;
+  return LOCALES[thai]?.[lang] || thai;
+}
+
+function setLang(lang){
+  DB.settings.lang = lang;
+  save();
+  showToast(`Language: ${LANG_NAMES[lang]||lang}`, 'success');
+  setTimeout(()=>{
+    renderShell();
+    showPage(currentPage);
+  }, 300);
 }
 
 function renderShell(){
@@ -1774,10 +1875,10 @@ function renderShell(){
           <div class="brand-user">${isOwner?'👨‍🌾 ':'👷 '}${currentUser.name}</div>
         </div>
         ${menu.map(m=> m.sec
-          ? `<div class="menu-section">${m.sec}</div>`
-          : `<div class="menu-item" data-page="${m.p}" onclick="showPage('${m.p}')"><span class="ic">${m.i}</span>${m.t}</div>`
+          ? `<div class="menu-section">${tr(m.sec)}</div>`
+          : `<div class="menu-item" data-page="${m.p}" onclick="showPage('${m.p}')"><span class="ic">${m.i}</span>${tr(m.t)}</div>`
         ).join('')}
-        <button class="btn-logout" onclick="logout()">🚪 ออกจากระบบ</button>
+        <button class="btn-logout" onclick="logout()">🚪 ${tr('ออกจากระบบ')}</button>
       </div>
       <div class="main">
         <button class="menu-toggle no-print" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
@@ -1906,6 +2007,7 @@ function renderDash(){
       <div class="value">${money(milkValue)}</div>
       <div class="sub">${fmt(milkTotal)} ลิตร × ${money(DB.settings.milkPrice||0)}/ลิตร</div>
     </div>
+    ${renderRemindersWidget()}
     <div class="stat-grid">
       <div class="stat blue">
         <div class="stat-label">🐄 วัวให้นม</div>
@@ -2565,6 +2667,422 @@ async function sendTelegram(text){
   }
 }
 
+// ============== Auto-Backup to Telegram ==============
+// ส่งไฟล์ JSON ของฟาร์มไปแชท Telegram ทุก 7 วัน (และตอนกดเอง)
+async function runBackupNow(silent){
+  const token = DB.settings.telegramBotToken;
+  const chatId = DB.settings.telegramChatId;
+  if(!token || !chatId){
+    if(!silent) showToast('ต้องตั้งค่า Telegram ก่อน','error');
+    return false;
+  }
+  try{
+    if(!silent) showToast('กำลังสำรอง...','info');
+    // สร้างไฟล์ backup โดยตัด voiceMemo ออก (ไฟล์เล็กลง)
+    const backupData = JSON.parse(JSON.stringify(DB));
+    if(backupData.health) backupData.health.forEach(h=>{ if(h.voiceMemo) h.voiceMemo='[audio omitted]'; });
+    const json = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([json], {type:'application/json'});
+    const farmName = (DB.settings.farmName||'farm').replace(/[^a-zA-Z0-9ก-๙]/g,'_');
+    const date = new Date().toISOString().slice(0,10);
+    const filename = `farmmeth_backup_${farmName}_${date}.json`;
+
+    const form = new FormData();
+    form.append('chat_id', chatId);
+    form.append('document', blob, filename);
+    form.append('caption', `🐄 *FarmMeth Auto-Backup*\n📅 ${new Date().toLocaleString('th-TH')}\n🏠 ${DB.settings.farmName||'ฟาร์ม'}\n📊 วัว ${(DB.cows||[]).length} ตัว · น้ำนม ${(DB.milk||[]).length} รายการ`);
+    form.append('parse_mode', 'Markdown');
+
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {method:'POST', body: form});
+    const j = await r.json();
+    if(j.ok){
+      DB.settings.lastTelegramBackup = new Date().toISOString();
+      save();
+      if(!silent) showToast('สำรองสำเร็จ! ดูใน Telegram ได้เลย','success', 5000);
+      log('backup-tg','สำรองข้อมูลไป Telegram สำเร็จ');
+      return true;
+    } else {
+      if(!silent) showToast('สำรองล้มเหลว: '+(j.description||'unknown'),'error');
+      console.error('Backup failed:', j);
+      return false;
+    }
+  }catch(e){
+    console.error('Backup error:', e);
+    if(!silent) showToast('สำรองล้มเหลว: '+e.message,'error');
+    return false;
+  }
+}
+
+// เช็คครั้งเดียวตอน app boot — สำรองถ้าผ่าน 7 วันแล้ว
+function checkAutoBackup(){
+  if(!DB.settings.autoBackupEnabled) return;
+  if(!DB.settings.telegramBotToken || !DB.settings.telegramChatId) return;
+  if(currentUser.role !== 'owner') return; // เฉพาะ Owner
+  const last = DB.settings.lastTelegramBackup;
+  if(last){
+    const daysSince = (Date.now() - new Date(last).getTime()) / (1000*60*60*24);
+    if(daysSince < 7) return; // ยังไม่ถึง 7 วัน
+  }
+  // ผ่าน 7 วันแล้ว (หรือยังไม่เคย backup) → ส่ง
+  runBackupNow(true);
+}
+
+// ============== Voice Memo (MediaRecorder API) ==============
+// อัดเสียงบันทึก → เก็บ base64 ใน DB → เล่นซ้ำได้
+let _vmRecorder = null;
+let _vmChunks = [];
+let _vmStartTime = 0;
+let _vmTargetField = '';
+
+async function vmStart(targetFieldId){
+  if(!navigator.mediaDevices || !window.MediaRecorder){
+    showToast('เบราเซอร์ไม่รองรับการอัดเสียง','error');
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    _vmTargetField = targetFieldId;
+    _vmChunks = [];
+    _vmStartTime = Date.now();
+    // ใช้ mimetype ที่เบราเซอร์รองรับ
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+               : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+               : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+               : '';
+    _vmRecorder = new MediaRecorder(stream, mime?{mimeType:mime}:{});
+    _vmRecorder.ondataavailable = e => { if(e.data && e.data.size) _vmChunks.push(e.data); };
+    _vmRecorder.onstop = async () => {
+      const blob = new Blob(_vmChunks, {type: _vmRecorder.mimeType || 'audio/webm'});
+      // ตรวจขนาด (จำกัด 2MB ~ ประมาณ 2 นาที)
+      if(blob.size > 2*1024*1024){
+        showToast('ไฟล์เสียงใหญ่เกินไป (>2MB) ลองอัดสั้นลง','error');
+        stream.getTracks().forEach(t=>t.stop());
+        return;
+      }
+      // แปลงเป็น base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result;
+        const duration = Math.round((Date.now()-_vmStartTime)/1000);
+        const targetEl = document.getElementById(_vmTargetField);
+        if(targetEl){
+          targetEl.value = JSON.stringify({data:base64, duration, mime: blob.type, recorded: new Date().toISOString()});
+          // อัพเดท preview
+          const preview = document.getElementById(_vmTargetField+'_preview');
+          if(preview){
+            preview.innerHTML = `<audio controls src="${base64}" style="height:32px;max-width:100%"></audio> <span style="font-size:12px;color:#6b7280">${duration} วินาที</span> <button type="button" class="btn btn-sec btn-sm" onclick="vmClear('${_vmTargetField}')">🗑️ ลบ</button>`;
+          }
+          showToast(`บันทึกเสียงเรียบร้อย (${duration}s)`,'success');
+        }
+      };
+      reader.readAsDataURL(blob);
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    _vmRecorder.start();
+    // อัพเดทปุ่ม
+    const btn = document.getElementById(targetFieldId+'_btn');
+    if(btn){
+      btn.innerHTML = '⏹️ หยุดอัด';
+      btn.classList.add('btn-danger');
+      btn.classList.remove('btn-sec');
+      btn.onclick = ()=>vmStop();
+    }
+    // แสดงตัวจับเวลา
+    const timer = document.getElementById(targetFieldId+'_timer');
+    if(timer){
+      timer.style.display='inline-block';
+      timer.innerHTML = '🔴 0:00';
+      window._vmTimerInt = setInterval(()=>{
+        const sec = Math.floor((Date.now()-_vmStartTime)/1000);
+        timer.innerHTML = `🔴 ${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+        if(sec >= 120){ vmStop(); } // จำกัดสูงสุด 2 นาที
+      }, 500);
+    }
+  }catch(e){
+    console.error('Voice record error:', e);
+    showToast('ไม่สามารถเข้าถึงไมโครโฟน — โปรดให้สิทธิ์','error');
+  }
+}
+
+function vmStop(){
+  if(_vmRecorder && _vmRecorder.state !== 'inactive'){
+    _vmRecorder.stop();
+  }
+  if(window._vmTimerInt){ clearInterval(window._vmTimerInt); window._vmTimerInt=null; }
+  // คืนปุ่มเริ่ม
+  const btn = document.getElementById(_vmTargetField+'_btn');
+  if(btn){
+    btn.innerHTML = '🎤 อัดเสียง';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-sec');
+    btn.onclick = ()=>vmStart(_vmTargetField);
+  }
+  const timer = document.getElementById(_vmTargetField+'_timer');
+  if(timer) timer.style.display='none';
+}
+
+function vmClear(targetFieldId){
+  const el = document.getElementById(targetFieldId);
+  if(el) el.value = '';
+  const preview = document.getElementById(targetFieldId+'_preview');
+  if(preview) preview.innerHTML = '<span style="color:#9ca3af;font-size:13px">ยังไม่มีเสียง</span>';
+}
+
+// สร้าง HTML สำหรับใส่ในฟอร์ม
+function vmFieldHTML(fieldId, existingValue){
+  let preview = '<span style="color:#9ca3af;font-size:13px">ยังไม่มีเสียง</span>';
+  if(existingValue){
+    try{
+      const v = typeof existingValue==='string' ? JSON.parse(existingValue) : existingValue;
+      if(v.data){
+        preview = `<audio controls src="${v.data}" style="height:32px;max-width:100%"></audio> <span style="font-size:12px;color:#6b7280">${v.duration||'?'} วินาที</span> <button type="button" class="btn btn-sec btn-sm" onclick="vmClear('${fieldId}')">🗑️ ลบ</button>`;
+      }
+    }catch(e){}
+  }
+  const valStr = existingValue ? (typeof existingValue==='string'?existingValue:JSON.stringify(existingValue)) : '';
+  return `
+    <div class="field" style="margin-top:12px">
+      <label>🎤 บันทึกเสียง (ไม่บังคับ) <span style="font-size:12px;color:#6b7280">— สูงสุด 2 นาที</span></label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <button type="button" class="btn btn-sec" id="${fieldId}_btn" onclick="vmStart('${fieldId}')">🎤 อัดเสียง</button>
+        <span id="${fieldId}_timer" style="display:none;color:#dc2626;font-weight:600;font-size:14px"></span>
+      </div>
+      <div id="${fieldId}_preview" style="padding:8px;background:rgba(0,0,0,.03);border-radius:8px;min-height:40px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${preview}</div>
+      <input type="hidden" id="${fieldId}" value='${valStr.replace(/'/g,"&apos;")}'>
+    </div>`;
+}
+
+// Render audio playback HTML สำหรับใช้ในตาราง
+function vmPlaybackHTML(value){
+  if(!value) return '';
+  try{
+    const v = typeof value==='string' ? JSON.parse(value) : value;
+    if(v.data) return `<audio controls src="${v.data}" style="height:28px;max-width:200px"></audio>`;
+  }catch(e){}
+  return '';
+}
+
+// ============== Smart Reminder + AI Insight ==============
+function generateReminders(){
+  const reminders = [];
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0,10);
+
+  // 1. Vaccine due (DB.health มี followUp date)
+  (DB.health||[]).forEach(h=>{
+    if(h.followUp){
+      const days = Math.floor((new Date(h.followUp)-today)/(1000*60*60*24));
+      if(days>=0 && days<=3) reminders.push({type:'health', urgency: days<=1?'high':'medium', msg:`💉 นัดตรวจ/ฉีดวัคซีน: ${cowName(h.cowId)} ${days===0?'วันนี้':'อีก '+days+' วัน'}`});
+    }
+  });
+
+  // 2. Breeding/Calving due
+  (DB.breed||[]).forEach(b=>{
+    if(b.expected && !b.actualBirth){
+      const days = Math.floor((new Date(b.expected)-today)/(1000*60*60*24));
+      if(days>=-3 && days<=14) reminders.push({type:'breed', urgency: days<=3?'high':'medium', msg:`🤰 ใกล้คลอด: ${cowName(b.cowId)} ${days<0?'(เลย '+Math.abs(days)+' วัน)':'อีก '+days+' วัน'}`});
+    }
+  });
+
+  // 3. Heat cycle 21 days
+  (DB.heats||[]).forEach(h=>{
+    const next = new Date(h.date); next.setDate(next.getDate()+21);
+    const days = Math.floor((next-today)/(1000*60*60*24));
+    if(days>=0 && days<=2) reminders.push({type:'heat', urgency:'medium', msg:`🔥 คาดสัดถัดไป: ${cowName(h.cowId)} ${days===0?'วันนี้':'อีก '+days+' วัน'}`});
+  });
+
+  // 4. Stock low
+  (DB.inventory||[]).forEach(i=>{
+    if(i.minStock && +i.qty < +i.minStock){
+      reminders.push({type:'stock', urgency:'medium', msg:`📦 สต็อกต่ำ: ${i.name} (เหลือ ${i.qty} ${i.unit||''}/${i.minStock})`});
+    }
+  });
+
+  return reminders;
+}
+
+function generateInsights(){
+  const insights = [];
+  const today = new Date();
+  const last7 = new Date(today); last7.setDate(today.getDate()-7);
+  const prev7 = new Date(last7); prev7.setDate(last7.getDate()-7);
+  const last3 = new Date(today); last3.setDate(today.getDate()-3);
+
+  // 1. Milk drop detection per cow (last 3 vs prev 7 avg)
+  const lactCows = (DB.cows||[]).filter(c=>c.status==='lactating');
+  lactCows.forEach(c=>{
+    const last3Milk = (DB.milk||[]).filter(m=>m.cowId===c.id && new Date(m.date)>=last3);
+    const prev7Milk = (DB.milk||[]).filter(m=>m.cowId===c.id && new Date(m.date)<last3 && new Date(m.date)>=prev7);
+    if(prev7Milk.length>=3 && last3Milk.length>=2){
+      const last3Avg = last3Milk.reduce((s,m)=>s+(+m.amount||0),0) / 3;
+      const prev7Avg = prev7Milk.reduce((s,m)=>s+(+m.amount||0),0) / 7;
+      if(prev7Avg>1 && last3Avg < prev7Avg * 0.8){
+        const drop = Math.round((1-last3Avg/prev7Avg)*100);
+        insights.push({type:'milkDrop', urgency:'high', msg:`📉 ${c.code} ${c.name||''}: น้ำนมลด ${drop}% ติดต่อกัน 3 วัน — ลองตรวจสุขภาพ/อาหาร`});
+      }
+    }
+  });
+
+  // 2. No health record in 30 days
+  (DB.cows||[]).forEach(c=>{
+    if(c.status==='lactating' || c.status==='dry'){
+      const lastHealth = (DB.health||[]).filter(h=>h.cowId===c.id).sort((a,b)=>b.date.localeCompare(a.date))[0];
+      const lastDate = lastHealth ? new Date(lastHealth.date) : (c.birth?new Date(c.birth):today);
+      const days = Math.floor((today-lastDate)/(1000*60*60*24));
+      if(days>60) insights.push({type:'noHealth', urgency:'low', msg:`🩺 ${c.code} ${c.name||''}: ไม่มีบันทึกสุขภาพ ${days} วัน — ควรตรวจ`});
+    }
+  });
+
+  // 3. Cost spike (monthly expense > 120% of avg)
+  const thisMonth = today.toISOString().slice(0,7);
+  const lastMonth = new Date(today.getFullYear(), today.getMonth()-1, 1).toISOString().slice(0,7);
+  const thisM = (DB.expenses||[]).filter(e=>e.date && e.date.startsWith(thisMonth)).reduce((s,e)=>s+(+e.amount||0),0);
+  const lastM = (DB.expenses||[]).filter(e=>e.date && e.date.startsWith(lastMonth)).reduce((s,e)=>s+(+e.amount||0),0);
+  if(lastM>1000 && thisM > lastM*1.2){
+    const inc = Math.round((thisM/lastM-1)*100);
+    insights.push({type:'costSpike', urgency:'medium', msg:`💸 ค่าใช้จ่ายเดือนนี้สูงกว่าเดือนก่อน ${inc}% (฿${thisM.toLocaleString('th-TH')} vs ฿${lastM.toLocaleString('th-TH')})`});
+  }
+
+  // 4. Pregnancy rate
+  const breedRecords = (DB.breed||[]).filter(b=>{
+    const d = new Date(b.date);
+    return today-d < 1000*60*60*24*180; // 6 months
+  });
+  if(breedRecords.length>=5){
+    const confirmed = breedRecords.filter(b=>b.confirmed || b.actualBirth).length;
+    const rate = Math.round(confirmed/breedRecords.length*100);
+    if(rate < 50) insights.push({type:'lowPregnancy', urgency:'low', msg:`📊 อัตราการผสมติด 6 เดือนล่าสุด: ${rate}% (ต่ำกว่าเกณฑ์ 50%)`});
+  }
+
+  return insights;
+}
+
+// Widget แสดงการเตือน + AI insight บน Dashboard
+function renderRemindersWidget(){
+  try{
+    const reminders = generateReminders();
+    const insights = generateInsights();
+    const all = [...reminders, ...insights];
+    if(!all.length){
+      return `<div class="card" style="border-left:4px solid #10b981;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:24px">✅</span>
+          <div>
+            <div style="font-weight:700;color:#059669">ทุกอย่างปกติดี</div>
+            <div style="font-size:13px;color:#6b7280">ไม่มีเรื่องต้องเตือนในตอนนี้</div>
+          </div>
+        </div>
+      </div>`;
+    }
+    const urgencyColor = {high:'#dc2626', medium:'#f59e0b', low:'#3b82f6'};
+    const urgencyIcon = {high:'🔴', medium:'🟡', low:'🔵'};
+    const urgencyLabel = {high:'ด่วน', medium:'ควรดู', low:'น่ารู้'};
+    const sorted = all.sort((a,b)=>{
+      const order = {high:0, medium:1, low:2};
+      return (order[a.urgency]??1) - (order[b.urgency]??1);
+    });
+    return `<div class="card" style="margin-bottom:14px;border-left:4px solid ${urgencyColor[sorted[0].urgency]||'#3b82f6'}">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>🔔 การแจ้งเตือนอัจฉริยะ <span class="badge gray" style="margin-left:8px">${all.length}</span></span>
+        <button class="btn btn-sec" style="font-size:12px;padding:4px 10px" onclick="runRemindersCheck(false);showToast('ตรวจสอบเรียบร้อย','success')">🔄 ตรวจสอบ</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        ${sorted.slice(0,6).map(r=>`
+          <div style="display:flex;gap:10px;padding:10px 12px;background:${document.body.classList.contains('dark')?'#1f2937':'#f9fafb'};border-radius:8px;border-left:3px solid ${urgencyColor[r.urgency]||'#3b82f6'}">
+            <span style="font-size:18px">${urgencyIcon[r.urgency]||'🔵'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;line-height:1.5">${r.msg}</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:2px">${urgencyLabel[r.urgency]||''} · ${r.type==='health'?'สุขภาพ':r.type==='breed'?'ผสมพันธุ์':r.type==='heat'?'เป็นสัด':r.type==='stock'?'สต็อก':r.type==='milk'?'น้ำนม':r.type==='cost'?'ค่าใช้จ่าย':'อื่นๆ'}</div>
+            </div>
+          </div>
+        `).join('')}
+        ${all.length>6?`<div style="text-align:center;color:#6b7280;font-size:13px;padding-top:4px">+ อีก ${all.length-6} รายการ</div>`:''}
+      </div>
+    </div>`;
+  }catch(e){
+    console.error('renderRemindersWidget error:', e);
+    return '';
+  }
+}
+
+// เช็คเตือนทุก 1 ชั่วโมง — แสดง toast + (ตัวเลือก) ส่ง Telegram/LINE
+let _lastReminderSent = '';
+function runRemindersCheck(silent){
+  if(!DB || !DB.cows) return;
+  const todayStr = today();
+  const reminders = generateReminders();
+  const insights = generateInsights();
+  const all = [...reminders, ...insights];
+  if(!all.length) return;
+
+  // แสดง toast ใน app (เฉพาะถ้าไม่ silent)
+  if(!silent){
+    all.slice(0,3).forEach((r,i)=>{
+      setTimeout(()=>showToast(r.msg, r.urgency==='high'?'alert':'warn', 6000), i*500);
+    });
+  }
+
+  // ส่ง notification ผ่าน Telegram/LINE 1 ครั้งต่อวัน (เฉพาะ urgency high)
+  const highItems = all.filter(r=>r.urgency==='high');
+  if(highItems.length && DB.settings.reminderLastSent !== todayStr){
+    const farmName = DB.settings.farmName || 'FarmMeth';
+    const msg = `🔔 <b>แจ้งเตือนสำคัญจาก ${farmName}</b>\n\n${highItems.map(r=>'• '+r.msg).join('\n')}\n\n_ตรวจในแอพเพื่อดูรายละเอียด_`;
+    if(DB.settings.telegramBotToken && DB.settings.telegramChatId){
+      sendTelegram(msg).then(()=>{
+        DB.settings.reminderLastSent = todayStr;
+        save();
+      }).catch(()=>{});
+    }
+    if(DB.settings.lineChannelToken && DB.settings.lineUserId){
+      sendLine(msg).catch(()=>{});
+    }
+  }
+}
+
+// ============== Toast Notification ==============
+function showToast(msg, type='info', duration=3500){
+  // type: info | success | warn | error
+  const icons = {info:'ℹ️', success:'✅', warn:'⚠️', error:'❌', alert:'🔔'};
+  let stack = document.getElementById('toastStack');
+  if(!stack){
+    stack = document.createElement('div');
+    stack.id = 'toastStack';
+    stack.className = 'toast-stack';
+    document.body.appendChild(stack);
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ️'}</span><span class="toast-msg">${msg}</span><button class="toast-x" onclick="this.parentElement.remove()">×</button>`;
+  stack.appendChild(el);
+  // Beep for warn/error/alert
+  if(type==='warn' || type==='error' || type==='alert') playBeep(type);
+  setTimeout(()=>{ el.classList.add('toast-fade'); setTimeout(()=>el.remove(), 300); }, duration);
+}
+
+// Web Audio API beep
+let _audioCtx = null;
+function playBeep(type='info'){
+  try{
+    if(!_audioCtx) _audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const ctx = _audioCtx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    const freq = {error:200, warn:400, alert:600, success:800, info:500}[type] || 500;
+    o.frequency.value = freq;
+    o.type = 'sine';
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+    o.start();
+    o.stop(ctx.currentTime + 0.4);
+    if(type==='alert' || type==='error'){
+      // beep 2 ครั้ง
+      setTimeout(()=>{ const o2=ctx.createOscillator(); const g2=ctx.createGain(); o2.connect(g2); g2.connect(ctx.destination); o2.frequency.value=freq; o2.type='sine'; g2.gain.setValueAtTime(0.0001, ctx.currentTime); g2.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02); g2.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4); o2.start(); o2.stop(ctx.currentTime + 0.4); }, 500);
+    }
+  }catch(e){}
+}
+
 function checkEveningCompletion(){
   const d = today();
   const lactCows = DB.cows.filter(c=>c.status==='lactating');
@@ -2876,7 +3394,7 @@ function renderHealth(){
         <td>${h.date}</td>
         <td>${cowName(h.cowId)}</td>
         <td>${h.type}</td>
-        <td>${h.detail||''}</td>
+        <td>${h.detail||''}${h.voiceMemo?'<br>'+vmPlaybackHTML(h.voiceMemo):''}</td>
         <td>${h.withdrawDays?h.withdrawDays+' วัน':'-'}</td>
         <td>${h.followUp||'-'}</td>
         ${isOwner?`<td>${money(h.cost||0)}</td>`:''}
@@ -2887,7 +3405,7 @@ function renderHealth(){
 }
 
 function openHealth(id){
-  const h = id ? DB.health.find(x=>x.id===id) : {date:today(),cowId:'',type:'วัคซีน',detail:'',withdrawDays:'',followUp:'',cost:''};
+  const h = id ? DB.health.find(x=>x.id===id) : {date:today(),cowId:'',type:'วัคซีน',detail:'',withdrawDays:'',followUp:'',cost:'',voiceMemo:''};
   openModal(`
     <h3>${id?'แก้ไข':'เพิ่ม'}บันทึกสุขภาพ</h3>
     <div class="form-grid">
@@ -2903,6 +3421,7 @@ function openHealth(id){
       ${currentUser.role==='owner'?`<div class="field"><label>ค่าใช้จ่าย</label><input type="number" id="f_cost" value="${h.cost||''}"></div>`:''}
     </div>
     <div class="field" style="margin-top:12px"><label>รายละเอียด</label><textarea id="f_det">${h.detail||''}</textarea></div>
+    ${vmFieldHTML('f_voice', h.voiceMemo)}
     <div class="modal-foot">
       ${id?'<button class="btn btn-danger" onclick="delHealth(\''+id+'\')">🗑️ ลบ</button>':''}
       <button class="btn btn-sec" onclick="closeModal()">ยกเลิก</button>
@@ -2916,6 +3435,7 @@ function saveHealth(id){
     detail:$('f_det').value, withdrawDays:+$('f_with').value||0,
     followUp:$('f_fol').value,
     cost: currentUser.role==='owner' ? (+($('f_cost')?.value)||0) : 0,
+    voiceMemo: $('f_voice')?.value || '',
     recordedBy: currentUser.name
   };
   if(id){
@@ -3990,8 +4510,18 @@ function renderKpi(){
 
 // ================== SETTINGS ==================
 function renderSet(){
+  const curLang = DB.settings.lang || 'th';
   $('pageContent').innerHTML = `
-    <div class="page-head"><div class="page-title">⚙️ ตั้งค่า</div></div>
+    <div class="page-head"><div class="page-title">⚙️ ${tr('ตั้งค่า')}</div></div>
+    <div class="card">
+      <div class="card-title">🌐 ${tr('ภาษา')} / Language</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${Object.entries(LANG_NAMES).map(([k,v])=>`
+          <button class="btn ${curLang===k?'btn-primary':'btn-sec'}" onclick="setLang('${k}')">${v}${curLang===k?' ✓':''}</button>
+        `).join('')}
+      </div>
+      <p class="muted" style="margin-top:10px;font-size:12px">รองรับเมนูหลัก · ระบบจะแปลเพิ่มเรื่อย ๆ</p>
+    </div>
     <div class="card">
       <div class="card-title">🏡 ข้อมูลฟาร์ม</div>
       <div class="form-grid">
@@ -4166,6 +4696,22 @@ function renderSet(){
       </div>
       <p class="muted" style="margin-top:8px;font-size:11px">📊 <b>Excel</b> เปิดได้ทั้ง Microsoft Excel และ Google Sheets (มี 13 sheet: สรุป + วัว + น้ำนม + อาหาร + สุขภาพ + ผสมพันธุ์ + แปลงหญ้า + สต็อก + ค่าใช้จ่าย + รายรับ + พนักงาน + ค่าแรง + ลงเวลา)</p>
       <p class="muted" style="margin-top:4px;font-size:11px">📥 <b>JSON</b> ใช้สำรองข้อมูล/กู้คืนเข้าแอพ — สำรองล่าสุด: ${DB.settings.lastBackup ? new Date(DB.settings.lastBackup).toLocaleString('th-TH') : 'ยังไม่เคย'}</p>
+    </div>
+    <div class="card">
+      <div class="card-title">☁️ Auto-Backup ไป Telegram (รายสัปดาห์)</div>
+      <p class="muted" style="margin-bottom:10px">ส่งไฟล์ JSON ทั้งหมดของฟาร์มไปแชท Telegram <b>อัตโนมัติทุก 7 วัน</b> เพื่อกันข้อมูลหาย</p>
+      ${DB.settings.telegramBotToken && DB.settings.telegramChatId ? '' : '<div style="background:#fef3c7;color:#92400e;padding:10px;border-radius:8px;font-size:13px;margin-bottom:10px">⚠️ ต้องตั้งค่า Telegram Bot Token + Chat ID ก่อน (ดูส่วน "📱 แจ้งเตือน Telegram" ด้านบน)</div>'}
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+        <input type="checkbox" id="s_autoBackup" ${DB.settings.autoBackupEnabled?'checked':''} onchange="DB.settings.autoBackupEnabled=this.checked;save();showToast(this.checked?'เปิด Auto-backup แล้ว':'ปิด Auto-backup แล้ว','success');refresh();">
+        <span>เปิดใช้ Auto-backup ทุก 7 วัน</span>
+      </label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="runBackupNow()">📤 สำรองตอนนี้</button>
+      </div>
+      <p class="muted" style="margin-top:10px;font-size:12px">
+        ☁️ <b>สำรอง Telegram ล่าสุด:</b> ${DB.settings.lastTelegramBackup ? new Date(DB.settings.lastTelegramBackup).toLocaleString('th-TH') : 'ยังไม่เคย'}<br>
+        📅 <b>ครั้งถัดไป:</b> ${DB.settings.autoBackupEnabled && DB.settings.lastTelegramBackup ? new Date(new Date(DB.settings.lastTelegramBackup).getTime()+7*24*60*60*1000).toLocaleDateString('th-TH') : '-'}
+      </p>
     </div>`;
 }
 
