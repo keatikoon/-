@@ -1768,6 +1768,7 @@ function clearSession(){
   try{
     localStorage.removeItem('dairy-session');
     localStorage.removeItem('dairy-current-page');
+    localStorage.removeItem('dairy-staff-farm');
   }catch(e){}
 }
 
@@ -2058,7 +2059,45 @@ function renderShell(){
     <div class="modal-bg" id="modalBg"><div class="modal" id="modalBody"></div></div>`;
 }
 
+// หน้าที่ owner เท่านั้น (financial + management + admin)
+const OWNER_ONLY_PAGES = ['expenses','income','sales','reports','kpi','employees','payroll','tasks','logs','settings'];
+
+// Defense in depth: ใช้ใน render functions ที่ owner เท่านั้นเข้าได้
+function guardOwnerOnly(){
+  if(currentUser?.role !== 'owner'){
+    $('pageContent').innerHTML = '<div class="empty" style="padding:60px 20px"><div class="ic">🔒</div>หน้านี้สำหรับเจ้าของฟาร์มเท่านั้น<br><span style="font-size:13px;color:#6b7280">กรุณาติดต่อเจ้าของฟาร์ม</span></div>';
+    return false;
+  }
+  return true;
+}
+
+function isPageAllowed(page){
+  if(!currentUser) return false;
+  if(currentUser.role==='owner') return true;
+  // Owner-only pages — staff เข้าไม่ได้แม้จะมี permission
+  if(OWNER_ONLY_PAGES.includes(page)) return false;
+  // ถ้า permissions = null → ทุกหน้าผ่าน (default), [] = ไม่มี, [array] = filter
+  const perms = currentUser.permissions;
+  if(perms === null || perms === undefined) return true;
+  if(!Array.isArray(perms)) return true;
+  return perms.includes(page);
+}
+
 function showPage(page){
+  // ตรวจสิทธิ์ก่อน — กัน staff bypass ผ่าน console/URL
+  if(!isPageAllowed(page)){
+    showToast('คุณไม่มีสิทธิ์เข้าหน้านี้','warn');
+    // หาหน้าแรกที่อนุญาต
+    const allowedMenu = Array.from(document.querySelectorAll('.menu-item')).map(m=>m.dataset.page).filter(p=>isPageAllowed(p));
+    const fallback = allowedMenu[0] || 'dashboard';
+    if(page !== fallback){
+      page = fallback;
+    } else {
+      // ไม่มีหน้าให้ไปเลย — แสดงข้อความว่าง
+      $('pageContent').innerHTML = '<div class="empty" style="padding:60px 20px"><div class="ic">🔒</div>คุณยังไม่ได้รับสิทธิ์เข้าหน้าใดๆ<br><span style="font-size:13px;color:#6b7280">กรุณาแจ้งเจ้าของฟาร์มให้กำหนดสิทธิ์ในเมนู "พนักงาน"</span></div>';
+      return;
+    }
+  }
   document.querySelectorAll('.menu-item').forEach(m=>m.classList.toggle('active', m.dataset.page===page));
   document.getElementById('sidebar')?.classList.remove('open');
   currentPage = page;
@@ -4346,6 +4385,7 @@ function delInv(id){
 
 // ================== EXPENSES ==================
 function renderExp(){
+  if(!guardOwnerOnly()) return;
   const data = filterByDate(DB.expenses,'expenses','month').sort((a,b)=>b.date.localeCompare(a.date));
   const total = data.reduce((s,e)=>s+(+e.amount||0),0);
   const byCategory = {};
@@ -4432,6 +4472,7 @@ function delExp(id){
 
 // ================== INCOME ==================
 function renderInc(){
+  if(!guardOwnerOnly()) return;
   const data = filterByDate(DB.income,'income','month').sort((a,b)=>b.date.localeCompare(a.date));
   const total = data.reduce((s,e)=>s+(+e.amount||0),0);
   $('pageContent').innerHTML = `
@@ -4505,6 +4546,7 @@ function delInc(id){
 
 // ================== ขายน้ำนม / INVOICE ==================
 function renderSales(){
+  if(!guardOwnerOnly()) return;
   if(!DB.sales) DB.sales = [];
   if(!DB.customers) DB.customers = [];
   const data = filterByDate(DB.sales,'sales','month').sort((a,b)=>b.date.localeCompare(a.date));
@@ -5056,6 +5098,7 @@ function printInvoice(id){
 
 // ================== EMPLOYEES ==================
 function renderEmp(){
+  if(!guardOwnerOnly()) return;
   // Farm ID = uid ของ owner (Firebase Auth) — ใช้สำหรับลิงก์ให้พนักงาน login
   const farmId = authUser?.uid || '';
   $('pageContent').innerHTML = `
@@ -5207,6 +5250,7 @@ function delEmp(id){
 
 // ================== PAYROLL ==================
 function renderPay(){
+  if(!guardOwnerOnly()) return;
   const data = DB.payroll.sort((a,b)=>b.period.localeCompare(a.period));
   $('pageContent').innerHTML = `
     <div class="page-head">
@@ -5321,6 +5365,7 @@ function printSlip(id){
 
 // ================== TASKS ==================
 function renderTasks(){
+  if(!guardOwnerOnly()) return;
   $('pageContent').innerHTML = `
     <div class="page-head">
       <div class="page-title">✅ มอบหมายงาน</div>
@@ -5598,6 +5643,7 @@ function renderAlerts(){
 
 // ================== REPORTS ==================
 function renderRep(){
+  if(!guardOwnerOnly()) return;
   const r = getPageRange('reports','month');
   const milk = filterByDate(DB.milk,'reports','month');
   const exp = filterByDate(DB.expenses,'reports','month');
@@ -5683,6 +5729,7 @@ function renderRep(){
 
 // ================== KPI ==================
 function renderKpi(){
+  if(!guardOwnerOnly()) return;
   const lactCows = DB.cows.filter(c=>c.status==='lactating');
   const t = new Date();
 
@@ -6402,6 +6449,7 @@ function resetData(){
 
 // ================== LOGS ==================
 function renderLogs(){
+  if(!guardOwnerOnly()) return;
   const logs = (DB.logs||[]).slice(0,200);
   $('pageContent').innerHTML = `
     <div class="page-head"><div class="page-title">📜 บันทึกกิจกรรม (${logs.length} ล่าสุด)</div></div>
