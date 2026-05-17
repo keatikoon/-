@@ -134,8 +134,15 @@ body.dark input[type="date"],body.dark input[type="time"],body.dark input[type="
 .menu-item:hover{background:#374151;color:#fff}
 .menu-item.active{background:#065f46;color:#fff;border-left-color:#10b981}
 .menu-item .ic{font-size:16px;width:20px;text-align:center}
-.btn-logout{margin:16px 20px;padding:10px;background:#dc2626;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
+.btn-logout{margin:8px 20px 16px;padding:10px;background:#dc2626;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
 .btn-logout:hover{background:#b91c1c}
+.sidebar-extras{margin:14px 20px 0;padding-top:14px;border-top:1px solid #374151}
+.lang-switch{display:flex;gap:4px;justify-content:space-between;margin-bottom:10px}
+.lang-btn{flex:1;padding:8px 4px;background:#374151;color:#fff;border:1px solid #4b5563;border-radius:8px;cursor:pointer;font-size:16px;line-height:1;transition:all .2s}
+.lang-btn:hover{background:#4b5563}
+.lang-btn.active{background:#16a34a;border-color:#10b981;transform:scale(1.05)}
+.line-contact-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:#06c755;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;text-decoration:none;transition:background .2s}
+.line-contact-btn:hover{background:#05a647}
 
 .main{flex:1;margin-left:240px;padding:20px;min-height:100vh}
 .page-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px}
@@ -1961,6 +1968,18 @@ function renderShell(){
           ? `<div class="menu-section">${tr(m.sec)}</div>`
           : `<div class="menu-item" data-page="${m.p}" onclick="showPage('${m.p}')"><span class="ic">${m.i}</span>${tr(m.t)}</div>`
         ).join('')}
+        <div class="sidebar-extras">
+          <div class="lang-switch" title="${tr('ภาษา')} / Language">
+            ${Object.entries(LANG_NAMES).map(([k,v])=>{
+              const flag = v.split(' ')[0]; // emoji ธง
+              const active = (DB.settings.lang||'th')===k ? 'active' : '';
+              return `<button class="lang-btn ${active}" onclick="setLang('${k}')" title="${v}">${flag}</button>`;
+            }).join('')}
+          </div>
+          <a href="https://line.me/R/ti/p/%40616zqqyz" target="_blank" rel="noopener" class="line-contact-btn">
+            <span style="font-size:18px">💬</span> ติดต่อทีมงาน LINE
+          </a>
+        </div>
         <button class="btn-logout" onclick="logout()">🚪 ${tr('ออกจากระบบ')}</button>
       </div>
       <div class="main">
