@@ -2328,7 +2328,8 @@ function renderDashCharts(){
         }
       });
     } else {
-      c3.parentElement.innerHTML += '<div class="empty"><div class="ic">📭</div>ยังไม่มีรายจ่ายเดือนนี้</div>';
+      // ไม่มีข้อมูล — แทนที่ canvas ด้วย empty state ที่อยู่ใน container เดียวกัน
+      c3.parentElement.innerHTML = '<div class="empty" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0"><div class="ic">📭</div>ยังไม่มีรายจ่ายเดือนนี้</div>';
     }
   }
 }
