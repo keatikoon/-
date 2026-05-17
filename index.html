@@ -1310,11 +1310,49 @@ async function doSignIn(){
   }
 }
 
-async function doGoogleSignIn(){
+async function doGoogleSignIn(isSignup){
   try{
-    await signInGoogle();
+    renderLoading(); // แสดง loading ทันที — กัน UI ค้างที่ Landing
+    const result = await signInGoogle();
+    // Safety net: ถ้า auth listener ไม่ trigger ภายใน 2 วินาที → force navigate เอง
+    // (บางเบราเซอร์/บางสภาวะ popup-mode signInWithPopup ไม่ trigger onAuthStateChanged)
+    setTimeout(async ()=>{
+      if(result?.user && !currentUser){
+        console.warn('[Google SignIn] Auth listener stuck — forcing navigation');
+        try{
+          authUser = result.user;
+          isAdmin = ADMIN_EMAILS.includes(result.user.email);
+          window.cloud.setFarmId(result.user.uid);
+          userPlan = await loadUserPlan(result.user.uid);
+          await loadFromCloud();
+          subscribeCloud();
+          if(planExpired()){
+            renderInternalLogin();
+            return;
+          }
+          currentUser = {role:'owner', name: result.user.displayName || 'เจ้าของฟาร์ม'};
+          saveSession();
+          enterApp();
+        }catch(err){
+          console.error('Manual navigation failed:', err);
+          // สุดท้าย — force reload (แน่นอนทำงาน)
+          location.reload();
+        }
+      }
+    }, 2000);
   }catch(e){
+    // popup ปิดเอง / blocked / cancelled
+    if(e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request'){
+      renderLanding();
+      return;
+    }
+    if(e.code === 'auth/popup-blocked'){
+      alert('⚠️ Popup ถูกบล็อก — อนุญาต popup ใน address bar แล้วลองใหม่');
+      renderLanding();
+      return;
+    }
     alert('Google sign-in ล้มเหลว: '+e.message);
+    renderLanding();
   }
 }
 
