@@ -2204,7 +2204,7 @@ function renderCows(){
     <div class="page-head">
       <div class="page-title">🐄 วัวในฟาร์ม (${DB.cows.length})</div>
       <div class="page-actions">
-        ${isOwner ? '<button class="btn btn-primary" onclick="openCow()">➕ เพิ่มวัว</button>' : ''}
+        <button class="btn btn-primary" onclick="openCow()">➕ เพิ่มวัว</button>
       </div>
     </div>
     ${DB.cows.length ? `<div class="cow-grid">
@@ -2551,7 +2551,7 @@ function renderCowProfile(id){
       <div class="page-title">🐄 ${c.code} - ${c.name||''}</div>
       <div class="page-actions">
         <button class="btn btn-sec" onclick="showPage('cows')">← กลับ</button>
-        ${isOwner?`<button class="btn btn-primary" onclick="openCow('${id}')">✏️ แก้ไข</button>`:''}
+        <button class="btn btn-primary" onclick="openCow('${id}')">✏️ แก้ไข</button>
       </div>
     </div>
     ${photos.length ? `<div style="text-align:center;margin-bottom:14px">
