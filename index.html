@@ -4458,29 +4458,28 @@ function quickMilk(cowId, session, amt){
 // ================== FEED ==================
 function renderFeed(){
   const data = filterByDate(DB.feed,'feed','7d').sort((a,b)=>b.date.localeCompare(a.date));
-  const isOwner = currentUser.role==='owner';
-  const totalCost = isOwner ? data.reduce((s,f)=>s+(+f.cost||0),0) : 0;
+  const totalCost = data.reduce((s,f)=>s+(+f.cost||0),0);
   $('pageContent').innerHTML = `
     <div class="page-head">
       <div class="page-title">🌾 บันทึกอาหาร</div>
       <div class="page-actions"><button class="btn btn-primary" onclick="openFeed()">➕ เพิ่ม</button></div>
     </div>
     ${rangeBar('feed','7d')}
-    ${isOwner?`<div class="stat-grid">
+    <div class="stat-grid">
       <div class="stat"><div class="stat-label">จำนวนรายการ</div><div class="stat-value">${data.length}</div></div>
       <div class="stat red"><div class="stat-label">ค่าอาหารรวม</div><div class="stat-value">${money(totalCost)}</div></div>
-    </div>`:''}
+    </div>
     <div class="table-wrap"><table>
-      <tr><th>วันที่</th><th>วัว/ฝูง</th><th>อาหาร</th><th>ปริมาณ</th>${isOwner?'<th>ราคา</th>':''}<th>โดย</th><th></th></tr>
+      <tr><th>วันที่</th><th>วัว/ฝูง</th><th>อาหาร</th><th>ปริมาณ</th><th>ราคา</th><th>โดย</th><th></th></tr>
       ${data.map(f=>`<tr>
         <td>${f.date}</td>
         <td>${f.cowId?cowName(f.cowId):'ทั้งฝูง'}</td>
         <td>${f.type}</td>
         <td>${fmt(f.qty)} ${f.unit||'กก.'}</td>
-        ${isOwner?`<td>${money(f.cost||0)}</td>`:''}
+        <td>${money(f.cost||0)}</td>
         <td class="muted">${f.recordedBy||''}</td>
         <td><button class="btn btn-sec btn-sm" onclick="openFeed('${f.id}')">✏️</button></td>
-      </tr>`).join('')||`<tr><td colspan="${isOwner?7:6}" class="empty">ไม่มีบันทึก</td></tr>`}
+      </tr>`).join('')||`<tr><td colspan="7" class="empty">ไม่มีบันทึก</td></tr>`}
     </table></div>`;
 }
 
@@ -4499,8 +4498,8 @@ function openFeed(id){
       </select></div>
       <div class="field"><label>ปริมาณ</label><input type="number" step="0.1" id="f_qty" value="${f.qty}"></div>
       <div class="field"><label>หน่วย</label><input id="f_unit" value="${f.unit||'กก.'}"></div>
-      ${currentUser.role==='owner'?`<div class="field"><label>ราคา/หน่วย</label><input type="number" step="0.01" id="f_price" value="${f.price||''}"></div>
-      <div class="field"><label>ค่าใช้จ่าย (บาท)</label><input type="number" step="0.01" id="f_cost" value="${f.cost||''}"></div>`:''}
+      <div class="field"><label>ราคา/หน่วย</label><input type="number" step="0.01" id="f_price" value="${f.price||''}"></div>
+      <div class="field"><label>ค่าใช้จ่าย (บาท)</label><input type="number" step="0.01" id="f_cost" value="${f.cost||''}"></div>
     </div>
     <div class="modal-foot">
       ${id?'<button class="btn btn-danger" onclick="delFeed(\''+id+'\')">🗑️ ลบ</button>':''}
@@ -4511,15 +4510,14 @@ function openFeed(id){
 
 function saveFeed(id){
   if(!id && !canCreateRecord()) return;
-  const isOwner = currentUser.role==='owner';
   const data = {
     date:$('f_date').value, cowId:$('f_cowId').value, type:$('f_type').value,
     qty:+$('f_qty').value||0, unit:$('f_unit').value,
-    price: isOwner ? (+($('f_price')?.value)||0) : 0,
-    cost: isOwner ? (+($('f_cost')?.value)||0) : 0,
+    price: +($('f_price')?.value)||0,
+    cost: +($('f_cost')?.value)||0,
     recordedBy: currentUser.name
   };
-  if(isOwner && data.price && !data.cost) data.cost = data.qty * data.price;
+  if(data.price && !data.cost) data.cost = data.qty * data.price;
   if(!data.qty){ alert('กรุณากรอกปริมาณ'); return; }
   if(id){
     Object.assign(DB.feed.find(x=>x.id===id), data);
