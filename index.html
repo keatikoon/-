@@ -722,17 +722,23 @@ function seedSampleData(){
 
 // ================== SAAS AUTH (Firebase) ==================
 let authUser = null;     // Firebase Auth user
-let userPlan = null;     // {plan: 'trial'|'basic'|'pro', trialEndsAt, paidUntil}
-let isAdmin = false;     // เจ้าของระบบ (Parke)
-const ADMIN_EMAILS = ['farmmeth09@gmail.com', 'keatikoon@gmail.com'];  // เจ้าของระบบ (รองรับทั้ง 2 อีเมล)
+let userPlan = null;
+let isAdmin = false;
+const ADMIN_EMAILS = ['farmmeth09@gmail.com', 'keatikoon@gmail.com'];
+
+// ============== FREE_MODE = true → ทุกอย่างฟรี ไม่มี limit, ไม่หมดอายุ ==============
+// ถ้าจะกลับมาเก็บเงินอีก → เปลี่ยน FREE_MODE = false
+const FREE_MODE = true;
+
 const PLANS = {
-  trial:    {name:'ทดลองใช้', maxCows: 5,   maxEmployees: 2, price: 0,   durationDays: 14},
-  basic:    {name:'Basic',    maxCows: 30,  maxEmployees: 5, price: 199, durationDays: 30},
-  pro:      {name:'Pro',      maxCows: 200, maxEmployees: 50, price: 990, durationDays: 30},
-  enterprise:{name:'Enterprise', maxCows: 99999, maxEmployees: 999, price: 0, durationDays: 36500}
+  trial:    {name:'ฟรี',        maxCows: 99999, maxEmployees: 999, price: 0, durationDays: 36500},
+  basic:    {name:'ฟรี',        maxCows: 99999, maxEmployees: 999, price: 0, durationDays: 36500},
+  pro:      {name:'ฟรี',        maxCows: 99999, maxEmployees: 999, price: 0, durationDays: 36500},
+  enterprise:{name:'ฟรี',       maxCows: 99999, maxEmployees: 999, price: 0, durationDays: 36500}
 };
 
 function planExpired(){
+  if(FREE_MODE) return false;
   if(!userPlan) return true;
   if(userPlan.plan === 'enterprise') return false;
   if(userPlan.plan === 'trial'){
@@ -744,6 +750,7 @@ function planExpired(){
 }
 
 function daysLeft(){
+  if(FREE_MODE) return 99999;
   if(!userPlan) return 0;
   const target = userPlan.plan==='trial' ? userPlan.trialEndsAt : userPlan.paidUntil;
   if(!target) return 0;
@@ -755,14 +762,22 @@ async function loadUserPlan(uid){
   try{
     const ref = window.cloud.doc(window.cloud.db, 'users', uid);
     const snap = await window.cloud.getDoc(ref);
-    if(snap.exists()) return snap.data();
-    // ถ้ายังไม่มี — สร้าง trial
-    const trialEnds = new Date();
-    trialEnds.setDate(trialEnds.getDate() + 14);
+    if(snap.exists()){
+      const u = snap.data();
+      // FREE MODE: upgrade existing trial/paid → enterprise (unlimited)
+      if(FREE_MODE && u.plan !== 'enterprise'){
+        u.plan = 'enterprise';
+        u.paidUntil = new Date(Date.now() + 100*365*24*60*60*1000).toISOString();
+        try{ await window.cloud.updateDoc(ref, {plan:'enterprise', paidUntil:u.paidUntil}); }catch(e){}
+      }
+      return u;
+    }
+    // ถ้ายังไม่มี — สร้าง free plan (FREE_MODE)
     const data = {
       uid, email: authUser?.email, displayName: authUser?.displayName||'',
-      plan: 'trial',
-      trialEndsAt: trialEnds.toISOString(),
+      plan: FREE_MODE ? 'enterprise' : 'trial',
+      trialEndsAt: FREE_MODE ? null : new Date(Date.now()+14*24*60*60*1000).toISOString(),
+      paidUntil: FREE_MODE ? new Date(Date.now() + 100*365*24*60*60*1000).toISOString() : null,
       createdAt: new Date().toISOString(),
       farmName: 'ฟาร์มของฉัน'
     };
@@ -1142,8 +1157,8 @@ function renderLanding(){
       <div class="hero">
         <h1>ระบบจัดการฟาร์มวัวนมที่ใช้งานง่ายที่สุด</h1>
         <p>บันทึกน้ำนม สุขภาพ ค่าใช้จ่าย พนักงาน — ครบในแอพเดียว แจ้งเตือนผ่าน Telegram อัตโนมัติ ใช้งานบนมือถือ-คอม ทุกที่</p>
-        <button class="hero-btn" onclick="renderSignupPage()">🎁 ลองฟรี 14 วัน</button>
-        <button class="hero-btn outline" onclick="document.querySelector('.pricing').scrollIntoView({behavior:'smooth'})">ดูราคา</button>
+        <button class="hero-btn" onclick="renderSignupPage()">🎁 สมัครฟรี!</button>
+        <button class="hero-btn outline" onclick="document.querySelector('.pricing').scrollIntoView({behavior:'smooth'})">ดูฟีเจอร์</button>
       </div>
     </div>
     <div class="features">
@@ -1164,45 +1179,23 @@ function renderLanding(){
     </div>
     <div class="pricing">
       <div class="pricing-inner">
-        <h2>ราคาเหมาะกับฟาร์มทุกขนาด</h2>
-        <div class="sub">เริ่มต้นฟรี 14 วัน · ไม่ต้องใช้บัตรเครดิต</div>
-        <div class="price-grid">
-          <div class="price-card">
-            <h3>ทดลอง</h3>
-            <div class="price">ฟรี<small> / 14 วัน</small></div>
-            <ul>
-              <li>5 ตัววัว</li>
-              <li>2 พนักงาน</li>
-              <li>ฟีเจอร์ครบ</li>
-              <li>Cloud sync</li>
-              <li>Telegram + Excel export</li>
-            </ul>
-            <button class="cta" onclick="renderSignupPage()">เริ่มทดลองฟรี</button>
-          </div>
+        <h2>🎁 ใช้งานฟรี! ทุกฟีเจอร์</h2>
+        <div class="sub">ไม่ต้องจ่ายเงิน · ไม่จำกัดวัว · ไม่จำกัดพนักงาน · ฟีเจอร์ครบทุกอย่าง</div>
+        <div class="price-grid" style="grid-template-columns:1fr;max-width:520px;margin:0 auto">
           <div class="price-card popular">
-            <h3>Basic</h3>
-            <div class="price">฿199<small> / เดือน</small></div>
+            <h3>🐄 FarmMeth ฟรี!</h3>
+            <div class="price">฿0<small> / ตลอดไป</small></div>
             <ul>
-              <li>30 ตัววัว</li>
-              <li>5 พนักงาน</li>
-              <li>ฟีเจอร์ครบ</li>
-              <li>Cloud + รูปคุณภาพสูง</li>
-              <li>แจ้งเตือน Telegram</li>
-              <li>ส่งออก Excel</li>
+              <li>✅ ไม่จำกัดจำนวนวัว</li>
+              <li>✅ ไม่จำกัดพนักงาน</li>
+              <li>✅ ฟีเจอร์ครบทุกอย่าง</li>
+              <li>✅ Cloud sync + Auto-backup</li>
+              <li>✅ Telegram/LINE แจ้งเตือน</li>
+              <li>✅ Invoice + รายงานภาษี</li>
+              <li>✅ QR Code, Lactation Curve, BCS</li>
+              <li>✅ 4 ภาษา (ไทย/EN/ลาว/เขมร)</li>
             </ul>
-            <button class="cta" onclick="renderSignupPage()">เริ่ม Basic</button>
-          </div>
-          <div class="price-card">
-            <h3>Pro</h3>
-            <div class="price">฿990<small> / เดือน</small></div>
-            <ul>
-              <li>200 ตัววัว</li>
-              <li>ไม่จำกัดพนักงาน</li>
-              <li>ฟีเจอร์ครบ</li>
-              <li>Priority support</li>
-              <li>API access (เร็วๆ นี้)</li>
-            </ul>
-            <button class="cta" onclick="renderSignupPage()">เริ่ม Pro</button>
+            <button class="cta" onclick="renderSignupPage()">🚀 สมัครเลย ฟรี!</button>
           </div>
         </div>
         <div style="text-align:center;margin-top:30px;padding:20px;background:#f9fafb;border-radius:12px;max-width:600px;margin-left:auto;margin-right:auto">
@@ -1347,11 +1340,12 @@ async function doForgotPassword(){
 }
 
 // ============== PLAN LIMITS CHECK ==============
-// Helper: เช็คก่อนสร้าง record ใหม่ — block เฉพาะตอน plan หมดอายุ (เปลี่ยน record เก่ายังทำได้)
+// Helper: เช็คก่อนสร้าง record ใหม่ — FREE MODE: ผ่านตลอด
 function canCreateRecord(){
-  if(!userPlan) return true; // ไม่มี plan = ยังไม่ load, ปล่อยผ่าน
+  if(FREE_MODE) return true;
+  if(!userPlan) return true;
   if(userPlan.plan === 'enterprise') return true;
-  if(currentUser?.role !== 'owner') return true; // staff ไม่ block (owner เป็นคนจ่าย)
+  if(currentUser?.role !== 'owner') return true;
   if(planExpired()){
     showToast('⚠️ แผนหมดอายุ — ต่ออายุก่อนเพิ่มข้อมูลใหม่','error',5000);
     setTimeout(()=>showPricingPage(), 800);
@@ -1361,6 +1355,7 @@ function canCreateRecord(){
 }
 
 function checkPlanLimit(type){
+  if(FREE_MODE) return true;
   if(!userPlan) return true;
   if(userPlan.plan === 'enterprise') return true;
   if(planExpired()){
@@ -1433,6 +1428,24 @@ function renderPromptPayQR(elId, phoneOrId, amount, size){
 }
 
 function showPricingPage(){
+  if(FREE_MODE){
+    // ในโหมดฟรี — แสดงข้อความ + กลับเข้าแอพ
+    const app = $('app');
+    app.innerHTML = `
+      <div class="login-wrap" style="background:#f3f4f6">
+        <div style="background:#fff;border-radius:20px;padding:40px;max-width:560px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.1)">
+          <div style="font-size:64px;margin-bottom:14px">🎁</div>
+          <h2 style="font-size:26px;color:#15803d;margin-bottom:12px">FarmMeth ใช้ฟรี 100%!</h2>
+          <p style="color:#374151;line-height:1.7;margin-bottom:18px">ทุกฟีเจอร์ใช้ได้ฟรีไม่จำกัด · ไม่จำกัดวัว · ไม่จำกัดพนักงาน · ไม่มีค่าใช้จ่ายใดๆ ทั้งสิ้น</p>
+          <div style="padding:14px;background:#f0fdf4;color:#15803d;border-radius:10px;font-size:14px;margin-bottom:20px;line-height:1.6">
+            ✅ ขอบคุณที่ใช้ FarmMeth!<br>
+            มีปัญหา/อยากเสนอฟีเจอร์ — ทักทาง <a href="https://line.me/R/ti/p/%40616zqqyz" target="_blank" style="color:#06c755;font-weight:600">LINE @616zqqyz</a>
+          </div>
+          <button class="btn btn-primary" style="width:100%;padding:14px" onclick="enterApp()">← กลับเข้าแอพ</button>
+        </div>
+      </div>`;
+    return;
+  }
   const app = $('app');
   const current = userPlan?.plan || 'trial';
   app.innerHTML = `
@@ -1937,6 +1950,7 @@ async function enterApp(){
 
 // Banner เตือนเมื่อ plan ใกล้หมดอายุ (เฉพาะ Owner)
 function renderPlanBanner(){
+  if(FREE_MODE) return '';
   if(!authUser || !userPlan) return '';
   if(currentUser?.role !== 'owner') return ''; // staff ไม่ต้องเห็น banner ต่ออายุ
   const days = daysLeft();
